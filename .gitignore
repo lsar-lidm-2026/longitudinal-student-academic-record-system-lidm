@@ -1,0 +1,4 @@
+# Kilo configuration
+.kilo/
+kilo.json
+AGENTS.md
