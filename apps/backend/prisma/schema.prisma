@@ -1,0 +1,220 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  ADMINISTRATOR
+  OPERATOR_SEKOLAH
+  GURU
+  KEPALA_SEKOLAH
+}
+
+enum SummaryType {
+  STUDENT_SUMMARY
+  DRAFT_DESCRIPTION
+  TRANSITION_SUMMARY
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String   // Hashed password untuk JWT auth (FR-01)
+  name      String
+  role      Role     @default(GURU)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi: Guru sebagai wali kelas (Teacher Assignment FR-03)
+  managedClasses Class[]          @relation("HomeroomTeacher")
+  // Relasi: Pengguna yang membuat record semester
+  createdRecords SemesterRecord[] @relation("RecordCreator")
+  // Relasi: Audit trail pencatatan perubahan wali kelas
+  auditLogs      ClassAuditLog[]
+
+  @@map("user")
+}
+
+model AcademicYear {
+  id         String   @id @default(uuid())
+  year       String   @unique // Contoh: "2025/2026"
+  isActive   Boolean  @default(false) // Aturan: Hanya 1 yang boleh true (FR-02)
+  isArchived Boolean  @default(false) // Soft flag untuk arsip (FR-02)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  classes         Class[]
+  semesterRecords SemesterRecord[]
+
+  @@map("academic_year")
+}
+
+model Class {
+  id                String   @id @default(uuid())
+  name              String   // Contoh: "Kelas 4A"
+  academicYearId    String
+  homeroomTeacherId String?  // Dapat bernilai null jika belum di-assign
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relasi
+  academicYear    AcademicYear    @relation(fields: [academicYearId], references: [id])
+  homeroomTeacher User?           @relation("HomeroomTeacher", fields: [homeroomTeacherId], references: [id], onDelete: SetNull)
+  students        Student[]
+  classAuditLogs  ClassAuditLog[]
+
+  // Constraint: Nama kelas unik dalam satu tahun ajaran
+  @@unique([name, academicYearId])
+  @@map("class")
+}
+
+model ClassAuditLog {
+  id                String   @id @default(uuid())
+  classId           String
+  previousTeacherId String?
+  newTeacherId      String?
+  changedById       String   // Administrator yang mengubah
+  changedAt         DateTime @default(now())
+
+  // Relasi (Rekomendasi Tambahan: Audit Log Akses Wali Kelas)
+  class     Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  changedBy User  @relation(fields: [changedById], references: [id])
+
+  @@map("class_audit_log")
+}
+
+model Student {
+  id        String   @id @default(uuid())
+  nis       String   @unique // Diisi unik untuk validasi data (FR-04)
+  nisn      String   @unique // Diisi unik untuk validasi data (FR-04)
+  name      String
+  gender    String
+  classId   String   // Wajib untuk middleware penentu hak akses wali kelas
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi
+  class           Class            @relation(fields: [classId], references: [id])
+  semesterRecords SemesterRecord[]
+
+  @@map("student")
+}
+
+model SemesterRecord {
+  id             String   @id @default(uuid())
+  studentId      String
+  academicYearId String
+  semester       Int      // 1 untuk Ganjil, 2 untuk Genap
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relasi Utama
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  creator      User         @relation("RecordCreator", fields: [createdById], references: [id])
+
+  // Sub-resource (Menempel via record_id)
+  subjectScores SubjectScore[]
+  attendance    Attendance? // 1:1 Relationship
+  achievements  Achievement[]
+  healthRecord  HealthRecord? // 1:1 Relationship
+  aiSummaries   AiSummary[]
+
+  // Constraint: Kombinasi Student + Tahun Ajaran + Semester harus Unik (Rekomendasi Tambahan)
+  @@unique([studentId, academicYearId, semester])
+  @@map("semester_record")
+}
+
+model SubjectScore {
+  id               String   @id @default(uuid())
+  semesterRecordId String
+  subjectName      String   // Contoh: "Matematika", "Bahasa Indonesia"
+  knowledgeScore   Float    // Nilai Pengetahuan
+  skillsScore      Float    // Nilai Keterampilan
+  notes            String?  @db.Text // Menggunakan Text untuk MySQL agar catatan bisa panjang
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relasi
+  semesterRecord SemesterRecord @relation(fields: [semesterRecordId], references: [id], onDelete: Cascade)
+
+  // Constraint: Satu mata pelajaran hanya punya satu baris nilai per semester record
+  @@unique([semesterRecordId, subjectName])
+  @@map("subject_score")
+}
+
+model Attendance {
+  id               String   @id @default(uuid())
+  semesterRecordId String   @unique // Constraint UNIQUE untuk menjamin 1:1 (Upsert logic)
+  sick             Int      @default(0) // Sakit
+  permission       Int      @default(0) // Izin
+  absent           Int      @default(0) // Tanpa Keterangan
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relasi
+  semesterRecord SemesterRecord @relation(fields: [semesterRecordId], references: [id], onDelete: Cascade)
+
+  @@map("attendance")
+}
+
+model Achievement {
+  id               String   @id @default(uuid())
+  semesterRecordId String
+  title            String   // Nama Prestasi
+  type             String   // Akademik / Non-Akademik
+  description      String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relasi
+  semesterRecord SemesterRecord @relation(fields: [semesterRecordId], references: [id], onDelete: Cascade)
+
+  @@map("achievement")
+}
+
+model HealthRecord {
+  id               String   @id @default(uuid())
+  semesterRecordId String   @unique // Constraint UNIQUE untuk menjamin 1:1 (Upsert logic)
+  height           Float?   // Tinggi Badan (cm)
+  weight           Float?   // Berat Badan (kg)
+  hearingCondition String?
+  visionCondition  String?
+  teethCondition   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relasi
+  semesterRecord SemesterRecord @relation(fields: [semesterRecordId], references: [id], onDelete: Cascade)
+
+  @@map("health_record")
+}
+
+model AiSummary {
+  id               String      @id @default(uuid())
+  semesterRecordId String
+  summaryType      SummaryType
+  content          String      @db.Text // Narasi AI biasanya panjang, diatur ke Text
+  isFinal          Boolean     @default(false) // Human-in-the-loop validation flag
+  version          Int         @default(1)     // Rekomendasi tambahan untuk versioning draft
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relasi
+  semesterRecord SemesterRecord @relation(fields: [semesterRecordId], references: [id], onDelete: Cascade)
+
+  // Mengizinkan multi-versi draft untuk summaryType yang sama sebelum difinalisasi
+  @@unique([semesterRecordId, summaryType, version])
+  @@map("ai_summary")
+}
