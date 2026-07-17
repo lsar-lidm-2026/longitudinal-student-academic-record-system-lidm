@@ -17,6 +17,7 @@ import { bukuIndukController } from "./modules/buku-induk/buku-induk.controller"
 import { dashboardController } from "./modules/dashboard/dashboard.controller";
 import { aiController } from "./modules/ai/ai.controller";
 import { aiSummaryController } from "./modules/ai/ai-summary.controller";
+import { mlController } from "./modules/ml/ml.controller";
 import { checkDbHealth } from "./lib/prisma";
 
 const app = new Elysia()
@@ -103,6 +104,7 @@ const app = new Elysia()
       .use(dashboardController)
       .use(aiController)
       .use(aiSummaryController)
+      .use(mlController)
   )
   .listen(env.port);
 

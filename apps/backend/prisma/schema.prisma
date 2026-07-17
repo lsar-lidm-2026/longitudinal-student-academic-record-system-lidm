@@ -53,8 +53,9 @@ model AcademicYear {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  classes         Class[]
-  semesterRecords SemesterRecord[]
+  classes          Class[]
+  semesterRecords  SemesterRecord[]
+  predictedOutcomes PredictedOutcome[]
 
   @@map("academic_year")
 }
@@ -104,8 +105,9 @@ model Student {
   updatedAt DateTime @updatedAt
 
   // Relasi
-  class           Class            @relation(fields: [classId], references: [id])
+  class        Class            @relation(fields: [classId], references: [id])
   semesterRecords SemesterRecord[]
+  predictedOutcomes PredictedOutcome[]
 
   @@map("student")
 }
@@ -217,4 +219,50 @@ model AiSummary {
   // Mengizinkan multi-versi draft untuk summaryType yang sama sebelum difinalisasi
   @@unique([semesterRecordId, summaryType, version])
   @@map("ai_summary")
+}
+
+// ── ML Models ─────────────────────────────────────────────────────
+
+enum ModelType {
+  TREND_PREDICTION
+  RISK_CLASSIFICATION
+  BEHAVIOR_CLUSTER
+}
+
+model PredictedOutcome {
+  id              String    @id @default(uuid())
+  studentId       String
+  academicYearId  String?   // nullable untuk prediksi multi-semester
+  modelType       ModelType
+  score           Float?    // Nilai prediksi numerik
+  label           String?   // Label klasifikasi: AMAN / WASPADA / KRITIS
+  confidence      Float?    // Confidence score 0-1
+  features        Json?     // Snapshot feature vector used for prediction
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relasi
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear  AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, academicYearId, modelType, isActive])
+  @@map("predicted_outcome")
+}
+
+model MlModel {
+  id           String    @id @default(uuid())
+  name         String
+  modelType    ModelType
+  version      Int
+  filePath     String?   // Path ke .onnx file
+  metrics      Json?     // MAE, RMSE, F1, akurasi, dll
+  featureList  Json?     // Daftar fitur yang digunakan
+  isActive     Boolean   @default(false)
+  trainedAt    DateTime? // Waktu training
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([modelType, version])
+  @@map("ml_model")
 }

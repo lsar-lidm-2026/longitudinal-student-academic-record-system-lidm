@@ -14,6 +14,7 @@ const menuItems: Record<string, { label: string; href: string; roles: Role[] }[]
   main: [
     { label: "Dashboard", href: "/", roles: ["ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH"] },
     { label: "Siswa", href: "/students", roles: ["GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] },
+    { label: "ML Dashboard", href: "/ml", roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH"] },
     { label: "Kelas", href: "/classes", roles: ["ADMINISTRATOR"] },
     { label: "Tahun Ajaran", href: "/academic-years", roles: ["ADMINISTRATOR"] },
     { label: "Pengguna", href: "/users", roles: ["ADMINISTRATOR"] },
