@@ -17,6 +17,7 @@ import { bukuIndukController } from "./modules/buku-induk/buku-induk.controller"
 import { dashboardController } from "./modules/dashboard/dashboard.controller";
 import { aiController } from "./modules/ai/ai.controller";
 import { aiSummaryController } from "./modules/ai/ai-summary.controller";
+import { checkDbHealth } from "./lib/prisma";
 
 const app = new Elysia()
   .use(cors())
@@ -73,10 +74,18 @@ const app = new Elysia()
     return errorResponse("INTERNAL_ERROR", "Internal server error");
   })
   // Health check
-  .get("/api/health", () => ({
-    success: true,
-    data: { status: "ok", timestamp: new Date().toISOString() },
-  }))
+  .get("/api/health", async () => {
+    const [db] = await Promise.all([checkDbHealth()]);
+    const allOk = db.ok;
+    return {
+      success: allOk,
+      data: {
+        status: allOk ? "ok" : "degraded",
+        timestamp: new Date().toISOString(),
+        database: db,
+      },
+    };
+  })
   // Routes
   .group("/api", (app) =>
     app
