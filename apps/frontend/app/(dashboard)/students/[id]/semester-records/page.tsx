@@ -2,9 +2,9 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useParams } from "next/navigation";
-import { Card } from "../../../../../components/ui/Card";
-import { Button } from "../../../../../components/ui/Button";
-import { Input } from "../../../../../components/ui/Input";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api } from "../../../../../lib/api";
 import type { AcademicYear, SemesterRecord } from "../../../../../types";
 

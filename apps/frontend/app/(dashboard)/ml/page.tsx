@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card } from "../../../components/ui/Card";
+import { Card } from "@/components/ui/card";
 import { RiskHeatmap } from "../../../components/ml/RiskHeatmap";
 import { api } from "../../../lib/api";
 import type { ClassItem } from "../../../types";

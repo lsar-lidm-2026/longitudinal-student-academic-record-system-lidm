@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import { Card } from "../../../components/ui/Card";
-import { Button } from "../../../components/ui/Button";
-import { Input } from "../../../components/ui/Input";
-import { Badge } from "../../../components/ui/Badge";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { api } from "../../../lib/api";
 import type { User, Role } from "../../../types";
 

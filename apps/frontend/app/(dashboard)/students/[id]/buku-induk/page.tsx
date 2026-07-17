@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Card } from "../../../../../components/ui/Card";
-import { Badge } from "../../../../../components/ui/Badge";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { api } from "../../../../../lib/api";
 
 interface PreviewData {
