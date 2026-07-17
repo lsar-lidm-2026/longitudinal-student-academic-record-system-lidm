@@ -2,3 +2,5 @@
 .kilo/
 kilo.json
 AGENTS.md
+.env
+docs/S3_GUIDE.md
