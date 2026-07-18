@@ -8,9 +8,10 @@ import { academicYearController } from "./modules/academic-years/academic-year.c
 import { classController } from "./modules/classes/class.controller";
 import { studentController } from "./modules/students/student.controller";
 import { semesterRecordController } from "./modules/semester-records/semester-record.controller";
+import { semesterRecordSubController } from "./modules/semester-records/semester-record.controller";
 import { subjectScoreController } from "./modules/subject-scores/subject-score.controller";
 import { attendanceController } from "./modules/attendance/attendance.controller";
-import { achievementController } from "./modules/achievements/achievement.controller";
+// import { achievementController } from "./modules/achievements/achievement.controller";
 import { healthRecordController } from "./modules/health-records/health-record.controller";
 import { profileController } from "./modules/profile/profile.controller";
 import { bukuIndukController } from "./modules/buku-induk/buku-induk.controller";
@@ -122,9 +123,10 @@ const app = new Elysia()
       .use(classController)
       .use(studentController)
       .use(semesterRecordController)
+      .use(semesterRecordSubController)
       .use(subjectScoreController)
       .use(attendanceController)
-      .use(achievementController)
+      // .use(achievementController)
       .use(healthRecordController)
       .use(profileController)
       .use(bukuIndukController)

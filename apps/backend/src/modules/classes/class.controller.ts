@@ -25,6 +25,20 @@ export const classController = new Elysia({ prefix: "/classes" })
       }),
     }
   )
+  .put(
+    "/:id",
+    async ({ params, body, user }) => {
+      checkRole(user, "ADMINISTRATOR");
+      const data = await service.updateClass(params.id, body);
+      return success(data);
+    },
+    {
+      body: t.Object({
+        name: t.Optional(t.String()),
+        academicYearId: t.Optional(t.String()),
+      }),
+    }
+  )
   .patch(
     "/:id/homeroom-teacher",
     async ({ params, body, user }) => {

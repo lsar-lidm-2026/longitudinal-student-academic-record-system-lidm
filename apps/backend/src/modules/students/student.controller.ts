@@ -8,7 +8,7 @@ import { checkRole } from "../../middleware/role";
 export const studentController = new Elysia({ prefix: "/students" })
   .use(requireAuth)
   .get("/", async ({ query, user }) => {
-    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH");
+    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH", "GURU");
     const result = await service.list(query);
     return paginated(result.data, result.page, result.limit, result.total);
   })

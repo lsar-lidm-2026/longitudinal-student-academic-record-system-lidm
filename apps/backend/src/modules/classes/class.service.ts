@@ -63,3 +63,16 @@ export async function assignTeacher(classId: string, teacherId: string, changedB
     return updated;
   });
 }
+
+export async function updateClass(id: string, data: { name?: string; academicYearId?: string }) {
+  const cls = await getById(id);
+  return prisma.class.update({
+    where: { id },
+    data,
+    include: {
+      academicYear: { select: { year: true } },
+      homeroomTeacher: { select: { id: true, name: true } },
+      _count: { select: { students: true } },
+    },
+  });
+}

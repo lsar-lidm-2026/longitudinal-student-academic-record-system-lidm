@@ -53,6 +53,24 @@ export async function getById(id: string) {
   return item;
 }
 
+export async function update(id: string, data: { academicYearId?: string; semester?: number }) {
+  await getById(id);
+  return prisma.semesterRecord.update({
+    where: { id },
+    data,
+    include: {
+      student: { select: { id: true, name: true } },
+      academicYear: { select: { year: true } },
+      creator: { select: { id: true, name: true } },
+      subjectScores: true,
+      attendance: true,
+      achievements: true,
+      healthRecord: true,
+      aiSummaries: true,
+    },
+  });
+}
+
 export async function listByStudent(studentId: string) {
   return prisma.semesterRecord.findMany({
     where: { studentId },
