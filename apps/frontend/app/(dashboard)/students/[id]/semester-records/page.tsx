@@ -2,21 +2,17 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useParams } from "next/navigation";
-import { Card } from "@/components/ui/card";
+import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "../../../../../lib/api";
-import type { AcademicYear, SemesterRecord } from "../../../../../types";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { Separator } from "@/components/ui/separator";
+import { api } from "@/lib/api";
+import type { AcademicYear, SemesterRecord } from "@/types";
 
 const SUBJECTS = [
-  "Pendidikan Agama",
-  "Pendidikan Pancasila",
-  "Bahasa Indonesia",
-  "Matematika",
-  "IPA",
-  "IPS",
-  "Seni Budaya",
-  "PJOK",
+  "Pendidikan Agama", "Pendidikan Pancasila", "Bahasa Indonesia",
+  "Matematika", "IPA", "IPS", "Seni Budaya", "PJOK",
 ];
 
 interface SubjectScoreInput {
@@ -94,17 +90,12 @@ export default function SemesterRecordsPage() {
 
   async function saveAll(e: FormEvent) {
     e.preventDefault();
-    if (!recordId) {
-      await createOrGetRecord();
-    }
+    if (!recordId) await createOrGetRecord();
     setLoading(true);
 
-    // Save subject scores
     for (const score of scores) {
       await api.put(`/semester-records/${recordId}/subject-scores`, score);
     }
-
-    // Save attendance
     await api.put(`/semester-records/${recordId}/attendance`, attendance);
 
     setLoading(false);
@@ -113,14 +104,20 @@ export default function SemesterRecordsPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Input Semester</h1>
+      <div className="relative">
+        <BorderBeam className="absolute inset-0 rounded-2xl" duration={8} />
+        <div className="relative p-6 bg-gradient-to-br from-white via-orange-50/30 rounded-2xl border border-orange-100/50">
+          <h1 className="text-2xl font-bold text-gray-900">Input Semester</h1>
+          <p className="text-sm text-muted-foreground mt-1">Input nilai dan kehadiran siswa</p>
+        </div>
+      </div>
 
-      <Card>
-        <div className="flex gap-4 items-end">
-          <div className="flex-1">
+      <MagicCard className="p-6" gradientSize={200}>
+        <div className="flex flex-col sm:flex-row gap-4 items-end">
+          <div className="flex-1 w-full">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white hover:border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
             >
@@ -131,10 +128,10 @@ export default function SemesterRecordsPage() {
               ))}
             </select>
           </div>
-          <div>
+          <div className="w-full sm:w-32">
             <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white hover:border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
               value={semester}
               onChange={(e) => setSemester(Number(e.target.value))}
             >
@@ -143,89 +140,85 @@ export default function SemesterRecordsPage() {
             </select>
           </div>
           <Button variant="secondary" onClick={createOrGetRecord}>
-            {recordId ? "Record Siap" : "Buat Record"}
+            {recordId ? "Record Siap ✓" : "Buat Record"}
           </Button>
         </div>
-      </Card>
+      </MagicCard>
 
       {recordId && (
         <form onSubmit={saveAll} className="space-y-6">
-          <Card title="Nilai Mata Pelajaran">
+          <MagicCard className="p-6" gradientSize={250}>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Nilai Mata Pelajaran</h3>
+            <p className="text-xs text-muted-foreground mb-4">Input nilai pengetahuan dan keterampilan</p>
+            <Separator className="mb-4" />
             <div className="space-y-3">
               {scores.map((score, idx) => (
-                <div key={score.subjectName} className="flex items-center gap-3">
-                  <span className="w-40 text-sm font-medium text-gray-700">{score.subjectName}</span>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={score.knowledgeScore || ""}
-                    onChange={(e) => {
-                      const newScores = [...scores];
-                      newScores[idx] = {
-                        ...newScores[idx],
-                        knowledgeScore: Number(e.target.value),
-                      };
-                      setScores(newScores);
-                    }}
-                    placeholder="Pengetahuan"
-                    className="w-24"
-                  />
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={score.skillsScore || ""}
-                    onChange={(e) => {
-                      const newScores = [...scores];
-                      newScores[idx] = {
-                        ...newScores[idx],
-                        skillsScore: Number(e.target.value),
-                      };
-                      setScores(newScores);
-                    }}
-                    placeholder="Keterampilan"
-                    className="w-24"
-                  />
+                <div key={score.subjectName} className="flex flex-col sm:flex-row sm:items-center gap-3 p-2 bg-gray-50/50 rounded-lg">
+                  <span className="sm:w-44 text-sm font-medium text-gray-700">{score.subjectName}</span>
+                  <div className="flex gap-3">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={score.knowledgeScore || ""}
+                      onChange={(e) => {
+                        const newScores = [...scores];
+                        newScores[idx] = { ...newScores[idx], knowledgeScore: Number(e.target.value) };
+                        setScores(newScores);
+                      }}
+                      placeholder="Pengetahuan"
+                      className="w-24"
+                    />
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={score.skillsScore || ""}
+                      onChange={(e) => {
+                        const newScores = [...scores];
+                        newScores[idx] = { ...newScores[idx], skillsScore: Number(e.target.value) };
+                        setScores(newScores);
+                      }}
+                      placeholder="Keterampilan"
+                      className="w-24"
+                    />
+                  </div>
                 </div>
               ))}
             </div>
-          </Card>
+          </MagicCard>
 
-          <Card title="Kehadiran">
-            <div className="flex gap-4">
+          <MagicCard className="p-6" gradientSize={200}>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Kehadiran</h3>
+            <p className="text-xs text-muted-foreground mb-4">Rekap ketidakhadiran siswa</p>
+            <Separator className="mb-4" />
+            <div className="flex flex-wrap gap-4">
               <Input
                 label="Sakit"
                 type="number"
                 min="0"
                 value={attendance.sick}
-                onChange={(e) =>
-                  setAttendance((a) => ({ ...a, sick: Number(e.target.value) }))
-                }
-                className="w-24"
+                onChange={(e) => setAttendance((a) => ({ ...a, sick: Number(e.target.value) }))}
+                className="w-28"
               />
               <Input
                 label="Izin"
                 type="number"
                 min="0"
                 value={attendance.permission}
-                onChange={(e) =>
-                  setAttendance((a) => ({ ...a, permission: Number(e.target.value) }))
-                }
-                className="w-24"
+                onChange={(e) => setAttendance((a) => ({ ...a, permission: Number(e.target.value) }))}
+                className="w-28"
               />
               <Input
                 label="Alpha"
                 type="number"
                 min="0"
                 value={attendance.absent}
-                onChange={(e) =>
-                  setAttendance((a) => ({ ...a, absent: Number(e.target.value) }))
-                }
-                className="w-24"
+                onChange={(e) => setAttendance((a) => ({ ...a, absent: Number(e.target.value) }))}
+                className="w-28"
               />
             </div>
-          </Card>
+          </MagicCard>
 
           <Button type="submit" loading={loading} className="w-full">
             Simpan Semua Data

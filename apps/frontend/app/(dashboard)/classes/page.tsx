@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card } from "@/components/ui/card";
+import { MagicCard } from "@/components/ui/magic-card";
 import { Badge } from "@/components/ui/badge";
-import { api } from "../../../lib/api";
-import type { ClassItem, User } from "../../../types";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { Separator } from "@/components/ui/separator";
+import { api } from "@/lib/api";
+import type { ClassItem, User } from "@/types";
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTeacher, setSelectedTeacher] = useState<Record<string, string>>({});
 
   useEffect(() => {
     Promise.all([
@@ -27,16 +28,9 @@ export default function ClassesPage() {
   }, []);
 
   async function assignTeacher(classId: string, teacherId: string) {
-    const res = await api.patch(`/classes/${classId}/homeroom-teacher`, { teacherId });
-    if (res.success) {
-      setClasses((prev) =>
-        prev.map((c) =>
-          c.id === classId
-            ? { ...c, homeroomTeacherId: teacherId, homeroomTeacher: users.find((u) => u.id === teacherId) }
-            : c
-        )
-      );
-    }
+    await api.patch(`/classes/${classId}/homeroom-teacher`, { teacherId });
+    const res = await api.get<ClassItem[]>("/classes");
+    if (res.success && res.data) setClasses(res.data as ClassItem[]);
   }
 
   if (loading) {
@@ -49,27 +43,39 @@ export default function ClassesPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Manajemen Kelas</h1>
+      <div className="relative">
+        <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
+        <div className="relative p-6 bg-gradient-to-br from-white via-green-50/30 rounded-2xl border border-green-100/50">
+          <h1 className="text-2xl font-bold text-gray-900">Manajemen Kelas</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {classes.length} kelas terdaftar
+          </p>
+        </div>
+      </div>
 
-      <Card>
+      <MagicCard className="p-0 overflow-hidden" gradientSize={300}>
+        <div className="p-4 pb-0">
+          <h3 className="text-sm font-medium text-muted-foreground">Daftar Kelas</h3>
+        </div>
+        <Separator className="mt-3" />
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Kelas</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Tahun Ajaran</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Siswa</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Wali Kelas</th>
+            <tr className="border-b border-gray-100 bg-gray-50/50">
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Kelas</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground hidden sm:table-cell">Tahun Ajaran</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Siswa</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Wali Kelas</th>
             </tr>
           </thead>
           <tbody>
             {classes.map((cls) => (
-              <tr key={cls.id} className="border-b border-gray-100 hover:bg-gray-50">
+              <tr key={cls.id} className="border-b border-gray-50 hover:bg-green-50/30 transition-colors">
                 <td className="py-3 px-4 text-sm font-medium text-gray-900">{cls.name}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{cls.academicYear?.year}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{cls._count?.students || 0}</td>
+                <td className="py-3 px-4 text-sm text-gray-500 hidden sm:table-cell">{cls.academicYear?.year}</td>
+                <td className="py-3 px-4 text-sm text-gray-500">{cls._count?.students || 0}</td>
                 <td className="py-3 px-4">
                   <select
-                    className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+                    className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white hover:border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
                     value={cls.homeroomTeacherId || ""}
                     onChange={(e) => assignTeacher(cls.id, e.target.value)}
                   >
@@ -81,9 +87,16 @@ export default function ClassesPage() {
                 </td>
               </tr>
             ))}
+            {classes.length === 0 && (
+              <tr>
+                <td colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                  Belum ada kelas
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
-      </Card>
+      </MagicCard>
     </div>
   );
 }

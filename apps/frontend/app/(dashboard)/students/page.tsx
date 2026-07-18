@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card } from "@/components/ui/card";
+import { MagicCard } from "@/components/ui/magic-card";
 import { Input } from "@/components/ui/input";
-import { api } from "../../../lib/api";
-import type { Student } from "../../../types";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { Separator } from "@/components/ui/separator";
+import { api } from "@/lib/api";
+import type { Student } from "@/types";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -35,8 +37,14 @@ export default function StudentsPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Data Siswa</h1>
+      <div className="relative">
+        <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
+        <div className="relative p-6 bg-gradient-to-br from-white via-blue-50/30 rounded-2xl border border-blue-100/50">
+          <h1 className="text-2xl font-bold text-gray-900">Data Siswa</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {students.length} siswa terdaftar
+          </p>
+        </div>
       </div>
 
       <Input
@@ -45,44 +53,48 @@ export default function StudentsPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      <Card>
+      <MagicCard className="p-0 overflow-hidden" gradientSize={300}>
+        <div className="p-4 pb-0">
+          <h3 className="text-sm font-medium text-muted-foreground">Daftar Siswa</h3>
+        </div>
+        <Separator className="mt-3" />
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Nama</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">NIS</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">NISN</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Kelas</th>
-              <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Aksi</th>
+            <tr className="border-b border-gray-100 bg-gray-50/50">
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Nama</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground hidden sm:table-cell">NIS</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground hidden md:table-cell">NISN</th>
+              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground hidden lg:table-cell">Kelas</th>
+              <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Aksi</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((student) => (
-              <tr key={student.id} className="border-b border-gray-100 hover:bg-gray-50">
+              <tr key={student.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                 <td className="py-3 px-4 text-sm font-medium text-gray-900">{student.name}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{student.nis}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{student.nisn}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{student.class?.name || "-"}</td>
+                <td className="py-3 px-4 text-sm text-gray-500 hidden sm:table-cell">{student.nis}</td>
+                <td className="py-3 px-4 text-sm text-gray-500 hidden md:table-cell">{student.nisn}</td>
+                <td className="py-3 px-4 text-sm text-gray-500 hidden lg:table-cell">{student.class?.name || "-"}</td>
                 <td className="py-3 px-4 text-right">
                   <Link
                     href={`/students/${student.id}`}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
                   >
-                    Detail
+                    Detail →
                   </Link>
                 </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-sm text-gray-500">
-                  Tidak ada data siswa
+                <td colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                  {search ? "Tidak ada siswa dengan nama tersebut" : "Tidak ada data siswa"}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-      </Card>
+      </MagicCard>
     </div>
   );
 }
