@@ -15,8 +15,8 @@ import * as path from "path";
 import * as fs from "fs";
 
 // onnx-proto provides the compiled ONNX protobuf types
-import * as onnxModule from "onnx-proto";
-const $root = (onnxModule as any).onnx;
+import onnxMod from "onnx-proto";
+const $onnx = (onnxMod as any).onnx;
 
 export interface OnnxExportResult {
   filePath: string;
@@ -49,7 +49,7 @@ function makeTensor(
     ? Buffer.concat(data.map(float32ToBytes))
     : Buffer.concat(data.map(int64ToBytes));
 
-  return $root.onnx.TensorProto.create({
+  return $onnx.TensorProto.create({
     name,
     dataType,
     dims,
@@ -58,13 +58,13 @@ function makeTensor(
 }
 
 function makeValueInfo(name: string, dims: number[], elemType: number = 1) {
-  return $root.onnx.ValueInfoProto.create({
+  return $onnx.ValueInfoProto.create({
     name,
-    type: $root.onnx.TypeProto.create({
-      tensorType: $root.onnx.TypeProto.Tensor.create({
+    type: $onnx.TypeProto.create({
+      tensorType: $onnx.TypeProto.Tensor.create({
         elemType,
-        shape: $root.onnx.TensorShapeProto.create({
-          dim: dims.map((d) => $root.onnx.TensorShapeProto.Dimension.create({ dimValue: d })),
+        shape: $onnx.TensorShapeProto.create({
+          dim: dims.map((d) => $onnx.TensorShapeProto.Dimension.create({ dimValue: d })),
         }),
       }),
     }),
@@ -83,7 +83,7 @@ export function exportLinearRegressionOnnx(
   const modelDir = path.resolve(env.mlModelPath);
   if (!fs.existsSync(modelDir)) fs.mkdirSync(modelDir, { recursive: true });
 
-  const modelProto = $root.onnx.ModelProto.create({
+  const modelProto = $onnx.ModelProto.create({
     irVersion: 9,
     producerName: "LSAR-ML",
     producerVersion: "1.0",
@@ -91,9 +91,9 @@ export function exportLinearRegressionOnnx(
     modelVersion: 1,
     docString: `LSAR Linear Regression: ${modelName}`,
     opsetImport: [
-      $root.onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
+      $onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
     ],
-    graph: $root.onnx.GraphProto.create({
+    graph: $onnx.GraphProto.create({
       name: modelName,
       docString: `Linear regression for ${modelName}`,
       input: [makeValueInfo("X", [-1, 1])],
@@ -103,23 +103,23 @@ export function exportLinearRegressionOnnx(
         makeTensor("B", [intercept], [1]),
       ],
       node: [
-        $root.onnx.NodeProto.create({
+        $onnx.NodeProto.create({
           input: ["X", "W", "B"],
           output: ["Y"],
           name: `${modelName}_gemm`,
           opType: "Gemm",
           attribute: [
-            $root.onnx.AttributeProto.create({ name: "alpha", type: 1, f: 1.0 }),
-            $root.onnx.AttributeProto.create({ name: "beta", type: 1, f: 1.0 }),
-            $root.onnx.AttributeProto.create({ name: "transA", type: 2, i: 0 }),
-            $root.onnx.AttributeProto.create({ name: "transB", type: 2, i: 0 }),
+            $onnx.AttributeProto.create({ name: "alpha", type: 1, f: 1.0 }),
+            $onnx.AttributeProto.create({ name: "beta", type: 1, f: 1.0 }),
+            $onnx.AttributeProto.create({ name: "transA", type: 2, i: 0 }),
+            $onnx.AttributeProto.create({ name: "transB", type: 2, i: 0 }),
           ],
         }),
       ],
     }),
   });
 
-  const buffer = $root.onnx.ModelProto.encode(modelProto).finish() as Buffer;
+  const buffer = $onnx.ModelProto.encode(modelProto).finish() as Buffer;
   const fileName = `${modelName.replace(/\s+/g, "-").toLowerCase()}.onnx`;
   const filePath = path.join(modelDir, fileName);
   fs.writeFileSync(filePath, Buffer.from(buffer));
@@ -152,23 +152,23 @@ export function exportDecisionTreeOnnx(
   );
 
   // Minimal ONNX metadata wrapper
-  const metadataProto = $root.onnx.ModelProto.create({
+  const metadataProto = $onnx.ModelProto.create({
     irVersion: 9,
     producerName: "LSAR-ML",
     producerVersion: "1.0",
     docString: `Decision Tree: ${modelName}. Inference uses JS from companion .json file.`,
     opsetImport: [
-      $root.onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
+      $onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
     ],
-    graph: $root.onnx.GraphProto.create({
+    graph: $onnx.GraphProto.create({
       name: modelName,
       node: [
-        $root.onnx.NodeProto.create({
+        $onnx.NodeProto.create({
           output: ["Y"],
           name: `${modelName}_constant`,
           opType: "Constant",
           attribute: [
-            $root.onnx.AttributeProto.create({
+            $onnx.AttributeProto.create({
               name: "value",
               type: 4,
               t: makeTensor("tree_ref", [treeData.length], [1]),
@@ -180,7 +180,7 @@ export function exportDecisionTreeOnnx(
     }),
   });
 
-  const buffer = $root.onnx.ModelProto.encode(metadataProto).finish() as Buffer;
+  const buffer = $onnx.ModelProto.encode(metadataProto).finish() as Buffer;
   const onnxPath = path.join(modelDir, `${modelName.replace(/\s+/g, "-").toLowerCase()}.onnx`);
   fs.writeFileSync(onnxPath, Buffer.from(buffer));
 
@@ -221,14 +221,14 @@ export function exportKMeansOnnx(
     "utf-8"
   );
 
-  const modelProto = $root.onnx.ModelProto.create({
+  const modelProto = $onnx.ModelProto.create({
     irVersion: 9,
     producerName: "LSAR-ML",
     docString: `K-Means Clustering: ${modelName}. ${nClusters} clusters, ${nFeatures} features.`,
     opsetImport: [
-      $root.onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
+      $onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
     ],
-    graph: $root.onnx.GraphProto.create({
+    graph: $onnx.GraphProto.create({
       name: modelName,
       docString: `Nearest-centroid clustering with ${nClusters} clusters`,
       // Input: X (1 x n_features) float32
@@ -243,75 +243,63 @@ export function exportKMeansOnnx(
         makeTensor("repeats", repeats, [2], 7),
         // Pow exponent as float32 scalar
         makeTensor("pow_exp", [2], [1], 1),
-        // ArgMin axis as int64 scalar
-        makeTensor("argmin_axis", [1], [1], 7),
+        // ReduceSum axes: [1] (sum across feature dimension) as int64
+        makeTensor("sum_axes", [1], [1], 7),
+        // No need for separate argmin_axis — it's an attribute in opset 12+
       ],
       // Computation graph
       node: [
         // 1. Tile input to match centroid count
-        $root.onnx.NodeProto.create({
+        $onnx.NodeProto.create({
           input: ["X", "repeats"],
           output: ["tiled"],
           name: `${modelName}_tile`,
           opType: "Tile",
         }),
         // 2. Subtract centroids
-        $root.onnx.NodeProto.create({
+        $onnx.NodeProto.create({
           input: ["tiled", "centroids"],
           output: ["diff"],
           name: `${modelName}_sub`,
           opType: "Sub",
         }),
         // 3. Square differences
-        $root.onnx.NodeProto.create({
+        $onnx.NodeProto.create({
           input: ["diff", "pow_exp"],
           output: ["squared"],
           name: `${modelName}_pow`,
           opType: "Pow",
         }),
-        // 4. Sum across features (keepdims=0)
-        $root.onnx.NodeProto.create({
-          input: ["squared"],
+        // 4. Sum across features — axes is input Tensor in opset 18+
+        $onnx.NodeProto.create({
+          input: ["squared", "sum_axes"],
           output: ["distances"],
           name: `${modelName}_sum`,
           opType: "ReduceSum",
           attribute: [
-            $root.onnx.AttributeProto.create({
-              name: "axes",
-              type: 7, // INTS
-              ints: [1], // sum across feature dimension
-            }),
-            $root.onnx.AttributeProto.create({
+            $onnx.AttributeProto.create({
               name: "keepdims",
               type: 2, // INT
               i: 0,
             }),
           ],
         }),
-        // 5. Find nearest centroid
-        $root.onnx.NodeProto.create({
-          input: ["distances", "argmin_axis"],
+        // 5. Find nearest centroid — axis is an attribute in opset 12+
+        $onnx.NodeProto.create({
+          input: ["distances"],
           output: ["cluster_id"],
           name: `${modelName}_argmin`,
           opType: "ArgMin",
           attribute: [
-            $root.onnx.AttributeProto.create({
-              name: "axis",
-              type: 2, // INT
-              i: 0,
-            }),
-            $root.onnx.AttributeProto.create({
-              name: "keepdims",
-              type: 2, // INT
-              i: 0,
-            }),
+            $onnx.AttributeProto.create({ name: "axis", type: 2, i: 0 }),
+            $onnx.AttributeProto.create({ name: "keepdims", type: 2, i: 0 }),
           ],
         }),
       ],
     }),
   });
 
-  const buffer = $root.onnx.ModelProto.encode(modelProto).finish() as Buffer;
+  const buffer = $onnx.ModelProto.encode(modelProto).finish() as Buffer;
   const fileName = `${modelName.replace(/\s+/g, "-").toLowerCase()}.onnx`;
   const filePath = path.join(modelDir, fileName);
   fs.writeFileSync(filePath, Buffer.from(buffer));

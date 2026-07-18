@@ -7,7 +7,7 @@ describe("Student Service", () => {
 
   beforeAll(async () => {
     await cleanDb();
-    const year = await prisma.academicYear.create({ data: { year: "2025/2026" } });
+    const year = await prisma.academicYear.create({ data: { year: "ST-2025/2026" } });
     yearId = year.id;
     const cls = await prisma.class.create({ data: { name: "Kelas 5A", academicYearId: year.id } });
     classId = cls.id;
