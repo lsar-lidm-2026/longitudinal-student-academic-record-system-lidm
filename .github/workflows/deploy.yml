@@ -38,7 +38,6 @@ jobs:
             --exclude=node_modules \
             --exclude=.git \
             --exclude=.next \
-            --exclude='*.lock' \
             deploy.sh \
             docker-compose.yml \
             Dockerfile.frontend \
