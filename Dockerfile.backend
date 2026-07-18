@@ -23,6 +23,7 @@ ENV MODEL_PATH=/tmp/models
 COPY --from=build /app/src/generated ./src/generated
 COPY --from=build /app/node_modules ./node_modules
 COPY apps/backend/src ./src
+COPY apps/backend/prisma ./prisma
 COPY apps/backend/package.json ./
 
 EXPOSE 3001
