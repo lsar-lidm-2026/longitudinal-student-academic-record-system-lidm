@@ -78,9 +78,9 @@ jobs:
           # Write .env
           printf '%s\n' "$PRODUCTION_ENV" | ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cat > $VPS_TARGET_DIR/.env"
 
-          # Login GHCR on VPS, pull tagged images, restart
+          # Login GHCR on VPS (use GITHUB_TOKEN — same token that pushed the images)
           ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" \
-            "echo ${GH_PAT} | docker login ghcr.io -u $VPS_USER --password-stdin && \
+            "echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin && \
              cd $VPS_TARGET_DIR && \
              export FRONTEND_TAG=${SHA_TAG} BACKEND_TAG=${SHA_TAG} && \
              docker compose pull && \
