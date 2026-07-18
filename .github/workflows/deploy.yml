@@ -60,33 +60,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Setup SSH
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H -t ed25519,rsa "$VPS_HOST" >> ~/.ssh/known_hosts
+          SSH_OPTS=(-o StrictHostKeyChecking=yes -o LogLevel=error)
 
-          SSH_OPTS=(-o StrictHostKeyChecking=yes)
-
-          # Git pull on VPS
-          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" bash -c "
-            if [ -d $VPS_TARGET_DIR/.git ]; then
-              cd $VPS_TARGET_DIR
-              git remote set-url origin https://x-access-token:${GH_PAT}@github.com/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm.git
-              git pull origin main
-            else
-              git clone https://x-access-token:${GH_PAT}@github.com/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm.git $VPS_TARGET_DIR
-            fi
-          "
+          # Git pull — discard local changes, pull latest
+          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" \
+            "cd $VPS_TARGET_DIR && \
+             git remote set-url origin https://x-access-token:${GH_PAT}@github.com/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm.git && \
+             git reset --hard HEAD && \
+             git pull origin main"
 
           # Write .env
           printf '%s\n' "$PRODUCTION_ENV" | ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cat > $VPS_TARGET_DIR/.env"
 
           # Pull tagged images and restart
-          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" bash -c "
-            cd $VPS_TARGET_DIR
-            export FRONTEND_TAG=${SHA_TAG} BACKEND_TAG=${SHA_TAG}
-            docker compose pull
-            docker compose up -d --remove-orphans
-            docker image prune -f --filter 'until=24h' 2>/dev/null || true
-          "
+          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" \
+            "cd $VPS_TARGET_DIR && \
+             export FRONTEND_TAG=${SHA_TAG} BACKEND_TAG=${SHA_TAG} && \
+             docker compose pull && \
+             docker compose up -d --remove-orphans && \
+             docker image prune -f --filter 'until=24h' 2>/dev/null; true"
