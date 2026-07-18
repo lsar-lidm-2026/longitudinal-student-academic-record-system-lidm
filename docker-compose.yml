@@ -37,8 +37,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lidm-frontend.rule=Host(`lidm.asepharyana.my.id`)"
-      - "traefik.http.routers.lidm-frontend.entrypoints=web,websecure"
-      - "traefik.http.routers.lidm-frontend.tls=true"
+      - "traefik.http.routers.lidm-frontend.entrypoints=web"
       - "traefik.http.services.lidm-frontend.loadbalancer.server.port=3000"
 
   backend:
@@ -91,8 +90,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lidm-backend.rule=Host(`lidm-api.asepharyana.my.id`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.lidm-backend.entrypoints=websecure"
-      - "traefik.http.routers.lidm-backend.tls=true"
+      - "traefik.http.routers.lidm-backend.entrypoints=web"
       - "traefik.http.services.lidm-backend.loadbalancer.server.port=3001"
       - "traefik.http.middlewares.lidm-cors.headers.accesscontrolalloworiginlist=https://lidm.asepharyana.my.id"
       - "traefik.http.middlewares.lidm-cors.headers.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
