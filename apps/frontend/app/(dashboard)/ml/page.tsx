@@ -21,32 +21,27 @@ export default function MLDashboardPage() {
     setError(null);
     setSelectedClass("");
     setRiskData(null);
-    api.get<ClassItem[]>("/classes")
-      .then((res) => {
-        if (res.success && res.data) {
-          const items = res.data;
-          setClasses(items);
-          if (items.length > 0) setSelectedClass(items[0].id);
-        }
+    api.handleResponse(api.get<ClassItem[]>("/classes"))
+      .then((items) => {
+        setClasses(items);
+        if (items.length > 0) setSelectedClass(items[0].id);
       })
       .catch((err) => {
         setError(err.message || "Gagal memuat data");
       });
-    api.get<{ managedClasses?: { id: string; name: string }[] }>("/dashboard/summary")
-      .then((res) => {
-        if (res.success && res.data) {
-          const managed = res.data.managedClasses;
-          if (managed && managed.length > 0) {
-            const mapped = managed.map((c) => ({
-              id: c.id, name: c.name, academicYearId: "", homeroomTeacherId: null,
-            })) as ClassItem[];
-            setClasses((prev) => {
-              const ids = new Set(prev.map((c) => c.id));
-              const merged = [...prev, ...mapped.filter((m) => !ids.has(m.id))];
-              if (merged.length > 0 && !selectedClass) setSelectedClass(merged[0].id);
-              return merged;
-            });
-          }
+    api.handleResponse(api.get<{ managedClasses?: { id: string; name: string }[] }>("/dashboard/summary"))
+      .then((data) => {
+        const managed = data.managedClasses;
+        if (managed && managed.length > 0) {
+          const mapped = managed.map((c) => ({
+            id: c.id, name: c.name, academicYearId: "", homeroomTeacherId: null,
+          })) as ClassItem[];
+          setClasses((prev) => {
+            const ids = new Set(prev.map((c) => c.id));
+            const merged = [...prev, ...mapped.filter((m) => !ids.has(m.id))];
+            if (merged.length > 0 && !selectedClass) setSelectedClass(merged[0].id);
+            return merged;
+          });
         }
       })
       .catch((err) => {
@@ -60,15 +55,10 @@ export default function MLDashboardPage() {
     if (!selectedClass) return;
     setLoading(true);
     setError(null);
-    api.get<RiskData>(`/ml/risk/class/${selectedClass}`)
-      .then((res) => {
-        if (res.success && res.data) setRiskData(res.data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message || "Gagal memuat data risiko");
-        setLoading(false);
-      });
+    api.handleResponse(api.get<RiskData>(`/ml/risk/class/${selectedClass}`))
+      .then(setRiskData)
+      .catch((err) => setError(err.message || "Gagal memuat data risiko"))
+      .finally(() => setLoading(false));
   }, [selectedClass]);
 
   return (

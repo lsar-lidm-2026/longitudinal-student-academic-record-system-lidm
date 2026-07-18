@@ -21,15 +21,10 @@ export default function AcademicYearsPage() {
   function load() {
     setLoading(true);
     setError(null);
-    api.get<AcademicYear[]>("/academic-years")
-      .then((res) => {
-        if (res.success && res.data) setYears(res.data as AcademicYear[]);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message || "Gagal memuat tahun ajaran");
-        setLoading(false);
-      });
+    api.handleResponse(api.get<AcademicYear[]>("/academic-years"))
+      .then(setYears)
+      .catch((err) => setError(err.message || "Gagal memuat tahun ajaran"))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { load(); }, []);

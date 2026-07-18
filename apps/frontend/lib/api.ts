@@ -4,6 +4,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
 class ApiClient {
   private token: string | null = null;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -59,6 +60,43 @@ class ApiClient {
     }
   }
 
+  /**
+   * Deduplicate concurrent refresh calls.
+   * Multiple requests that hit 401 simultaneously share one refresh attempt.
+   */
+  private async ensureFreshToken(): Promise<boolean> {
+    if (this.refreshPromise) {
+      // Another request is already refreshing — wait for it
+      return this.refreshPromise;
+    }
+    this.refreshPromise = this.refreshSession();
+    try {
+      const result = await this.refreshPromise;
+      return result;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  /**
+   * Handle API response — check success flag and expose structured errors.
+   * Pages call this instead of raw api.get() to get consistent error handling.
+   */
+  async handleResponse<T>(response: Promise<ApiResponse<T>>): Promise<T> {
+    const res = await response;
+    if (!res.success) {
+      const message = res.error?.message || "Terjadi kesalahan";
+      const code = res.error?.code || "UNKNOWN_ERROR";
+      const err = new Error(message) as Error & { code: string; status?: number };
+      err.code = code;
+      throw err;
+    }
+    if (res.data === undefined) {
+      throw Object.assign(new Error("Data tidak ditemukan"), { code: "EMPTY_DATA" });
+    }
+    return res.data;
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -80,9 +118,9 @@ class ApiClient {
         body: body ? JSON.stringify(body) : undefined,
       });
 
-      // Auto-refresh on 401 Unauthorized
+      // Auto-refresh on 401 Unauthorized — with race condition protection
       if (res.status === 401 && retry) {
-        const refreshed = await this.refreshSession();
+        const refreshed = await this.ensureFreshToken();
         if (refreshed) {
           return this.request<T>(method, path, body, false);
         }
@@ -101,7 +139,7 @@ class ApiClient {
     } catch (err) {
       return {
         success: false,
-        error: { code: "NETWORK_ERROR", message: "Network error" },
+        error: { code: "NETWORK_ERROR", message: "Koneksi bermasalah, periksa jaringan Anda" },
       };
     }
   }

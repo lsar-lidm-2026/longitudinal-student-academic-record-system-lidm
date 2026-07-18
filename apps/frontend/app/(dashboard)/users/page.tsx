@@ -31,15 +31,10 @@ export default function UsersPage() {
   function load() {
     setLoading(true);
     setError(null);
-    api.get<User[]>("/users")
-      .then((res) => {
-        if (res.success && res.data) setUsers(res.data as User[]);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message || "Gagal memuat data pengguna");
-        setLoading(false);
-      });
+    api.handleResponse(api.get<User[]>("/users"))
+      .then(setUsers)
+      .catch((err) => setError(err.message || "Gagal memuat data pengguna"))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { load(); }, []);

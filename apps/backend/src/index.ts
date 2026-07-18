@@ -30,7 +30,18 @@ if (!env.jwtSecret) {
 }
 
 const app = new Elysia()
-  .use(cors())
+  .use(cors({
+    origin: (request: Request) => {
+      const origin = request.headers.get("origin") || "";
+      // Allow localhost origins (dev) and configured frontend URL
+      if (!origin || origin.startsWith("http://localhost") || origin.startsWith("https://localhost")) return true;
+      // In production, restrict to known frontend URL
+      const allowed = Bun.env.CORS_ORIGIN || "";
+      if (allowed && origin === allowed) return true;
+      return false; // block others
+    },
+    credentials: true,
+  }))
   .use(
     swagger({
       path: "/docs",

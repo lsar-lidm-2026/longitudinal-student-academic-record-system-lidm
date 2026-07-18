@@ -5,13 +5,11 @@
  * and serialize them to binary .onnx files.
  *
  * Supported exports (VALID):
- * - Linear Regression → ONNX Gemm op (y = wx + b)
  * - K-Means → Sub → Pow → ReduceSum → ArgMin graph (valid computation)
  *
- * NOT exported (because they were FAKE):
- * - Decision Tree → previous export was a JSON blob disguised as ONNX
- *   (Constant node with tree data encoded as a tensor — NOT valid inference).
- *   Use the JSON companion file for rule inspection instead.
+ * NOT exported (removed because they were dead code):
+ * - Linear Regression ONNX export — never called (per-student regression is computed on-the-fly)
+ * - Decision Tree — retired, replaced by transparent rule-based scoring
  */
 
 import { env } from "../../../config/env";
@@ -72,63 +70,6 @@ function makeValueInfo(name: string, dims: number[], elemType: number = 1) {
       }),
     }),
   });
-}
-
-/**
- * Export a linear regression model (y = slope * x + intercept) as ONNX.
- * Architecture: Input → Gemm → Output
- * Valid ONNX computation graph.
- */
-export function exportLinearRegressionOnnx(
-  modelName: string,
-  slope: number,
-  intercept: number
-): OnnxExportResult {
-  const modelDir = path.resolve(env.modelPath);
-  if (!fs.existsSync(modelDir)) fs.mkdirSync(modelDir, { recursive: true });
-
-  const modelProto = $onnx.ModelProto.create({
-    irVersion: 9,
-    producerName: "LSAR-Analytics",
-    producerVersion: "1.0",
-    domain: "lsar",
-    modelVersion: 1,
-    docString: `LSAR Linear Regression: ${modelName}`,
-    opsetImport: [
-      $onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
-    ],
-    graph: $onnx.GraphProto.create({
-      name: modelName,
-      docString: `Linear regression for ${modelName}`,
-      input: [makeValueInfo("X", [-1, 1])],
-      output: [makeValueInfo("Y", [-1, 1])],
-      initializer: [
-        makeTensor("W", [slope], [1, 1]),
-        makeTensor("B", [intercept], [1]),
-      ],
-      node: [
-        $onnx.NodeProto.create({
-          input: ["X", "W", "B"],
-          output: ["Y"],
-          name: `${modelName}_gemm`,
-          opType: "Gemm",
-          attribute: [
-            $onnx.AttributeProto.create({ name: "alpha", type: 1, f: 1.0 }),
-            $onnx.AttributeProto.create({ name: "beta", type: 1, f: 1.0 }),
-            $onnx.AttributeProto.create({ name: "transA", type: 2, i: 0 }),
-            $onnx.AttributeProto.create({ name: "transB", type: 2, i: 0 }),
-          ],
-        }),
-      ],
-    }),
-  });
-
-  const buffer = $onnx.ModelProto.encode(modelProto).finish() as Buffer;
-  const fileName = `${modelName.replace(/\s+/g, "-").toLowerCase()}.onnx`;
-  const filePath = path.join(modelDir, fileName);
-  fs.writeFileSync(filePath, Buffer.from(buffer));
-
-  return { filePath, modelType: "TREND_PREDICTION", format: "onnx", metrics: { slope, intercept } };
 }
 
 /**

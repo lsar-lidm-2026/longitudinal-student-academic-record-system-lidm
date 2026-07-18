@@ -19,21 +19,18 @@ export default function ClassesPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      api.get<ClassItem[]>("/classes"),
-      api.get<User[]>("/auth/users"),
+      api.handleResponse(api.get<ClassItem[]>("/classes")),
+      api.handleResponse(api.get<User[]>("/auth/users")),
     ])
-      .then(([classesRes, usersRes]) => {
-        if (classesRes.success && classesRes.data) setClasses(classesRes.data as ClassItem[]);
-        if (usersRes.success && usersRes.data) {
-          const guru = (usersRes.data as User[]).filter((u) => u.role === "GURU");
-          setUsers(guru);
-        }
-        setLoading(false);
+      .then(([classesData, usersData]) => {
+        setClasses(classesData);
+        const guru = usersData.filter((u) => u.role === "GURU");
+        setUsers(guru);
       })
       .catch((err) => {
         setError(err.message || "Gagal memuat data kelas");
-        setLoading(false);
-      });
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { refresh(); }, []);
@@ -41,8 +38,8 @@ export default function ClassesPage() {
   async function assignTeacher(classId: string, teacherId: string) {
     try {
       await api.patch(`/classes/${classId}/homeroom-teacher`, { teacherId });
-      const res = await api.get<ClassItem[]>("/classes");
-      if (res.success && res.data) setClasses(res.data as ClassItem[]);
+      const data = await api.handleResponse(api.get<ClassItem[]>("/classes"));
+      setClasses(data);
     } catch (err: any) {
       // silent catch — UI tetap konsisten
     }

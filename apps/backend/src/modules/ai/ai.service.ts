@@ -123,62 +123,82 @@ export async function generateDraftDescription(studentId: string) {
   });
 }
 
-export async function generateTransitionSummary(classId: string) {
+/**
+ * Process one student's transition summary (used for concurrent batching).
+ */
+async function generateSingleTransitionSummary(studentId: string) {
+  const { student: s, semesterRecords } = await getStudentAcademicData(studentId);
+  if (semesterRecords.length === 0) return null;
+
+  const allData = semesterRecords.map((r) => ({
+    name: s.name,
+    className: "",
+    semester: r.semester,
+    academicYear: r.academicYear.year,
+    subjectScores: r.subjectScores.map((sc) => ({
+      subjectName: sc.subjectName,
+      knowledgeScore: sc.knowledgeScore,
+      skillsScore: sc.skillsScore,
+    })),
+    attendance: r.attendance
+      ? { sick: r.attendance.sick, permission: r.attendance.permission, absent: r.attendance.absent }
+      : null,
+    achievements: r.achievements.map((a) => ({ title: a.title, type: a.type })),
+  }));
+
+  const prompt = buildTransitionSummaryPrompt(allData);
+  const content = await generateChatCompletion([
+    { role: "system", content: "Anda adalah asisten serah terima wali kelas SD." },
+    { role: "user", content: prompt },
+  ]);
+
+  const latestRecord = semesterRecords[semesterRecords.length - 1];
+
+  // Atomic version increment
+  return prisma.$transaction(async (tx) => {
+    const max = await tx.aiSummary.aggregate({
+      where: { semesterRecordId: latestRecord.id, summaryType: "TRANSITION_SUMMARY" },
+      _max: { version: true },
+    });
+    const nextVersion = (max._max.version || 0) + 1;
+
+    return tx.aiSummary.create({
+      data: {
+        semesterRecordId: latestRecord.id,
+        summaryType: "TRANSITION_SUMMARY",
+        content,
+        version: nextVersion,
+        isFinal: false,
+      },
+    });
+  });
+}
+
+/**
+ * Generate transition summaries for ALL students in a class.
+ * Uses concurrent batching with concurrency limit to avoid overwhelming the LLM API.
+ */
+export async function generateTransitionSummary(classId: string, concurrency = 3) {
   const students = await prisma.student.findMany({
     where: { classId },
     select: { id: true },
   });
 
-  const results = [];
+  const results: Awaited<ReturnType<typeof generateSingleTransitionSummary>>[] = [];
 
-  for (const student of students) {
-    const { student: s, semesterRecords } = await getStudentAcademicData(student.id);
-    if (semesterRecords.length === 0) continue;
-
-    const allData = semesterRecords.map((r) => ({
-      name: s.name,
-      className: "",
-      semester: r.semester,
-      academicYear: r.academicYear.year,
-      subjectScores: r.subjectScores.map((sc) => ({
-        subjectName: sc.subjectName,
-        knowledgeScore: sc.knowledgeScore,
-        skillsScore: sc.skillsScore,
-      })),
-      attendance: r.attendance
-        ? { sick: r.attendance.sick, permission: r.attendance.permission, absent: r.attendance.absent }
-        : null,
-      achievements: r.achievements.map((a) => ({ title: a.title, type: a.type })),
-    }));
-
-    const prompt = buildTransitionSummaryPrompt(allData);
-    const content = await generateChatCompletion([
-      { role: "system", content: "Anda adalah asisten serah terima wali kelas SD." },
-      { role: "user", content: prompt },
-    ]);
-
-    const latestRecord = semesterRecords[semesterRecords.length - 1];
-
-    // Atomic version increment
-    const summary = await prisma.$transaction(async (tx) => {
-      const max = await tx.aiSummary.aggregate({
-        where: { semesterRecordId: latestRecord.id, summaryType: "TRANSITION_SUMMARY" },
-        _max: { version: true },
-      });
-      const nextVersion = (max._max.version || 0) + 1;
-
-      return tx.aiSummary.create({
-        data: {
-          semesterRecordId: latestRecord.id,
-          summaryType: "TRANSITION_SUMMARY",
-          content,
-          version: nextVersion,
-          isFinal: false,
-        },
-      });
-    });
-
-    results.push(summary);
+  // Process in concurrent batches
+  for (let i = 0; i < students.length; i += concurrency) {
+    const batch = students.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(
+      batch.map((s) => generateSingleTransitionSummary(s.id))
+    );
+    for (const r of batchResults) {
+      if (r.status === "fulfilled" && r.value !== null) {
+        results.push(r.value);
+      } else if (r.status === "rejected") {
+        console.warn(`[AI] Transition summary failed for a student: ${r.reason?.message || r.reason}`);
+      }
+    }
   }
 
   return results;

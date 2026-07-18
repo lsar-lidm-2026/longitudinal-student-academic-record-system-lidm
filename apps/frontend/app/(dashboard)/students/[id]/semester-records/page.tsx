@@ -43,24 +43,19 @@ export default function SemesterRecordsPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      api.get<AcademicYear[]>("/academic-years"),
-      api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`),
+      api.handleResponse(api.get<AcademicYear[]>("/academic-years")),
+      api.handleResponse(api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`)),
     ])
-      .then(([yearsRes, recordsRes]) => {
-        if (yearsRes.success && yearsRes.data) {
-          setAcademicYears(yearsRes.data as AcademicYear[]);
-          const active = (yearsRes.data as AcademicYear[]).find((y) => y.isActive);
-          if (active) setSelectedYear(active.id);
-        }
-        if (recordsRes.success && recordsRes.data) {
-          setRecords(recordsRes.data as SemesterRecord[]);
-        }
-        setLoading(false);
+      .then(([yearsData, recordsData]) => {
+        setAcademicYears(yearsData);
+        const active = yearsData.find((y) => y.isActive);
+        if (active) setSelectedYear(active.id);
+        setRecords(recordsData);
       })
       .catch((err) => {
         setError(err.message || "Gagal memuat data");
-        setLoading(false);
-      });
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { refresh(); }, [params.id]);
@@ -91,18 +86,13 @@ export default function SemesterRecordsPage() {
       return existing.id;
     }
 
-    const res = await api.post<SemesterRecord>(`/students/${params.id}/semester-records`, {
+    const data = await api.handleResponse(api.post<SemesterRecord>(`/students/${params.id}/semester-records`, {
       academicYearId: selectedYear,
       semester,
-    });
-
-    if (res.success && res.data) {
-      const data = res.data as SemesterRecord;
-      setRecordId(data.id);
-      setRecords((prev) => [...prev, data]);
-      return data.id;
-    }
-    return null;
+    }));
+    setRecordId(data.id);
+    setRecords((prev) => [...prev, data]);
+    return data.id;
   }
 
   async function saveAll(e: FormEvent) {

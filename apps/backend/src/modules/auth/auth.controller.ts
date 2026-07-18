@@ -12,8 +12,12 @@ export const authController = new Elysia({ prefix: "/auth" })
         const result = await authService.login(body);
         return success(result);
       } catch (e: any) {
-        set.status = 401;
-        return errorResponse("UNAUTHORIZED", e.message);
+        if (e.name === "AppError" && e.code === "UNAUTHORIZED") {
+          set.status = 401;
+          return errorResponse("UNAUTHORIZED", e.message);
+        }
+        // Jangan mask error internal sebagai 401
+        throw e;
       }
     },
     {

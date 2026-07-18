@@ -19,17 +19,10 @@ export default function DashboardPage() {
   function refresh() {
     setLoading(true);
     setError(null);
-    api.get<DashboardSummary>("/dashboard/summary")
-      .then((res) => {
-        if (res.success && res.data) {
-          setData(res.data as DashboardSummary);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message || "Gagal memuat data dashboard");
-        setLoading(false);
-      });
+    api.handleResponse(api.get<DashboardSummary>("/dashboard/summary"))
+      .then((data) => setData(data))
+      .catch((err) => setError(err.message || "Gagal memuat data dashboard"))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { refresh(); }, []);

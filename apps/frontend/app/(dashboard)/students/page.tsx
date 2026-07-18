@@ -18,17 +18,10 @@ export default function StudentsPage() {
   function refresh() {
     setLoading(true);
     setError(null);
-    api.get<Student[]>("/students")
-      .then((res) => {
-        if (res.success && res.data) {
-          setStudents(res.data as Student[]);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message || "Gagal memuat data siswa");
-        setLoading(false);
-      });
+    api.handleResponse(api.get<Student[]>("/students"))
+      .then((data) => setStudents(data))
+      .catch((err) => setError(err.message || "Gagal memuat data siswa"))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { refresh(); }, []);
@@ -36,6 +29,12 @@ export default function StudentsPage() {
   const filtered = students.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const pageSize = 50;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paginatedStudents = filtered.slice(0, page * pageSize);
+  const hasMore = paginatedStudents.length < filtered.length;
 
   if (loading) {
     return (
@@ -93,7 +92,7 @@ export default function StudentsPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((student) => (
+            {paginatedStudents.map((student) => (
               <tr key={student.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                 <td className="py-3 px-4 text-sm font-medium text-gray-900">{student.name}</td>
                 <td className="py-3 px-4 text-sm text-gray-500 hidden sm:table-cell">{student.nis}</td>
@@ -118,6 +117,16 @@ export default function StudentsPage() {
             )}
           </tbody>
         </table>
+        {hasMore && (
+          <div className="px-4 py-3 border-t border-gray-100 text-center">
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
+            >
+              Muat lebih banyak ({filtered.length - paginatedStudents.length} tersisa)
+            </button>
+          </div>
+        )}
       </MagicCard>
     </div>
   );

@@ -1,3 +1,4 @@
+import React from "react";
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
@@ -41,7 +42,7 @@ export interface ButtonProps
   loading?: boolean;
 }
 
-function Button({
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button({
   className,
   variant,
   size,
@@ -49,9 +50,10 @@ function Button({
   disabled,
   children,
   ...props
-}: ButtonProps) {
+}, ref) {
   return (
     <ButtonPrimitive
+      ref={ref}
       className={cn(buttonVariants({ variant, size }), className)}
       disabled={disabled || loading}
       {...props}
@@ -60,6 +62,6 @@ function Button({
       {children}
     </ButtonPrimitive>
   );
-}
+});
 
 export { Button, buttonVariants };

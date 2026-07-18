@@ -11,6 +11,11 @@ export const env = {
   llmBaseUrl: Bun.env.AI_LLM_BASE_URL || "",
   llmModel: Bun.env.AI_LLM_MODEL || "",
 
+  /** Validasi LLM config — true if all required LLM env vars are set */
+  llmConfigured: (): boolean => {
+    return !!(Bun.env.AI_LLM_API_KEY && Bun.env.AI_LLM_BASE_URL && Bun.env.AI_LLM_MODEL);
+  },
+
   // Analytics / Clustering
   clusteringEnabled: Bun.env.CLUSTERING_ENABLED === "true",
   modelPath: Bun.env.MODEL_PATH || "./models",

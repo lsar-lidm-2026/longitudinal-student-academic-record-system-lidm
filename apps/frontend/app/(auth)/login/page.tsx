@@ -24,7 +24,7 @@ export default function LoginPage() {
 
     if (res.success && res.data) {
       const data = res.data as AuthResult;
-      api.setToken(data.accessToken);
+      api.setTokens(data.accessToken, data.refreshToken);
       router.push("/");
     } else {
       setError(res.error?.message || "Login gagal");

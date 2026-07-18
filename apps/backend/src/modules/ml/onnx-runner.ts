@@ -3,7 +3,6 @@
  * Falls back gracefully to JS-based inference when ONNX is unavailable.
  *
  * Validates that ONNX files are genuine protobuf before attempting inference.
- * The decision tree "ONNX" export that was a JSON-in-disguise will be rejected.
  */
 
 import { env } from "../../config/env";

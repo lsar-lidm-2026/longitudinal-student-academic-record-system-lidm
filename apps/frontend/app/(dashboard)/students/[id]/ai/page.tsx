@@ -27,10 +27,8 @@ export default function AiAssistantPage() {
 
   function refresh() {
     setError(null);
-    api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`)
-      .then((res) => {
-        if (res.success && res.data) setRecords(res.data as SemesterRecord[]);
-      })
+    api.handleResponse(api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`))
+      .then(setRecords)
       .catch((err) => {
         setError(err.message || "Gagal memuat data semester");
       });
@@ -41,8 +39,8 @@ export default function AiAssistantPage() {
   async function loadSummaries() {
     if (!selectedRecord) return;
     try {
-      const res = await api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`);
-      if (res.success && res.data) setSummaries(res.data as AiSummary[]);
+      const data = await api.handleResponse(api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`));
+      setSummaries(data);
     } catch (err: any) {
       toast.error(err.message || "Gagal memuat riwayat AI");
     }
@@ -61,14 +59,10 @@ export default function AiAssistantPage() {
     };
 
     try {
-      const res = await api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord });
-      if (res.success && res.data) {
-        setResult(res.data as AiSummary);
-        toast.success("AI analysis berhasil digenerate");
-        loadSummaries();
-      } else {
-        toast.error(res.error?.message || "Gagal generate AI analysis");
-      }
+      const data = await api.handleResponse(api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord }));
+      setResult(data);
+      toast.success("AI analysis berhasil digenerate");
+      loadSummaries();
     } catch (err: any) {
       toast.error(err.message || "Gagal generate AI analysis");
     }
@@ -92,14 +86,10 @@ export default function AiAssistantPage() {
   async function regenerate(summaryId: string) {
     setRegenerating(true);
     try {
-      const res = await api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`);
-      if (res.success && res.data) {
-        setResult(res.data as AiSummary);
-        toast.success("AI berhasil di-regenerate");
-        loadSummaries();
-      } else {
-        toast.error(res.error?.message || "Gagal regenerate AI");
-      }
+      const data = await api.handleResponse(api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`));
+      setResult(data);
+      toast.success("AI berhasil di-regenerate");
+      loadSummaries();
     } catch (err: any) {
       toast.error(err.message || "Gagal regenerate AI");
     }

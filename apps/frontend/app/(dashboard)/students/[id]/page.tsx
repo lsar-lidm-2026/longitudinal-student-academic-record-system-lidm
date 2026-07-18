@@ -22,17 +22,10 @@ export default function StudentDetailPage() {
   function refresh() {
     setLoading(true);
     setError(null);
-    api.get<StudentProfile>(`/students/${params.id}/profile`)
-      .then((res) => {
-        if (res.success && res.data) {
-          setProfile(res.data as StudentProfile);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message || "Gagal memuat data siswa");
-        setLoading(false);
-      });
+    api.handleResponse(api.get<StudentProfile>(`/students/${params.id}/profile`))
+      .then((data) => setProfile(data))
+      .catch((err) => setError(err.message || "Gagal memuat data siswa"))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { refresh(); }, [params.id]);
