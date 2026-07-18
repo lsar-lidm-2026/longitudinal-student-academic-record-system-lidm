@@ -37,6 +37,7 @@ jobs:
           file: Dockerfile.${{ matrix.service }}
           push: true
           tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:sha-${{ github.sha }}
+          build-args: ${{ matrix.service == 'frontend' && 'NEXT_PUBLIC_API_URL=https://lidm-api.asepharyana.my.id/api' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
