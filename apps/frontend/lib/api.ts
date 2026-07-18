@@ -23,10 +23,47 @@ class ApiClient {
     }
   }
 
+  setTokens(accessToken: string, refreshToken: string) {
+    this.token = accessToken;
+    localStorage.setItem("accessToken", accessToken);
+    localStorage.setItem("refreshToken", refreshToken);
+    document.cookie = `accessToken=${accessToken}; path=/; max-age=604800; SameSite=Lax`;
+  }
+
+  getRefreshToken(): string | null {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("refreshToken");
+    }
+    return null;
+  }
+
+  private async refreshSession(): Promise<boolean> {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return false;
+
+    try {
+      const res = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.data) {
+        this.setTokens(data.data.accessToken, data.data.refreshToken);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   private async request<T>(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
+    retry = true
   ): Promise<ApiResponse<T>> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -42,6 +79,23 @@ class ApiClient {
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
+
+      // Auto-refresh on 401 Unauthorized
+      if (res.status === 401 && retry) {
+        const refreshed = await this.refreshSession();
+        if (refreshed) {
+          return this.request<T>(method, path, body, false);
+        }
+        // Refresh failed — clear session
+        this.setToken(null);
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        return {
+          success: false,
+          error: { code: "SESSION_EXPIRED", message: "Sesi berakhir, silakan login ulang" },
+        };
+      }
 
       return await res.json();
     } catch (err) {

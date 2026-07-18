@@ -64,7 +64,7 @@ describe("GURU summary", () => {
     await prisma.user.create({ data: { id: teacherId, username: "guru-sum", password: "x", name: "Guru", role: "GURU" } });
     const year = await prisma.academicYear.create({ data: { year: "D-G-2025/2026" } });
     const cls = await prisma.class.create({ data: { name: "Kelas 5A", academicYearId: year.id, homeroomTeacherId: teacherId } });
-    const summary = await service.getSummary(teacherId, "GURU");
+    const summary = await service.getSummary(teacherId, "GURU") as any;
     expect(summary.managedClasses.length).toBe(1);
     expect(summary.managedClasses[0].name).toBe("Kelas 5A");
   });
@@ -74,7 +74,7 @@ describe("GURU summary", () => {
     const teacherId = "teacher-noclass";
     await prisma.user.create({ data: { id: teacherId, username: "guru-nc", password: "x", name: "Guru NC", role: "GURU" } });
     const year = await prisma.academicYear.create({ data: { year: "D-G2-2025/2026" } });
-    const summary = await service.getSummary(teacherId, "GURU");
+    const summary = await service.getSummary(teacherId, "GURU") as any;
     expect(summary.managedClasses).toEqual([]);
     expect(summary.totalStudents).toBe(0);
   });

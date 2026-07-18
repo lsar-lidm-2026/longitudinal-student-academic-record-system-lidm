@@ -5,9 +5,9 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { BorderBeam } from "@/components/ui/border-beam";
-import { Separator } from "@/components/ui/separator";
+import { AiResultCard } from "@/components/ai/AiResultCard";
+import { AiHistoryList } from "@/components/ai/AiHistoryList";
 import { api } from "@/lib/api";
 import type { AiSummary, SemesterRecord } from "@/types";
 
@@ -20,6 +20,7 @@ export default function AiAssistantPage() {
   const [aiType, setAiType] = useState<AiType>("summary");
   const [summaries, setSummaries] = useState<AiSummary[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [result, setResult] = useState<AiSummary | null>(null);
 
   useEffect(() => {
@@ -59,7 +60,25 @@ export default function AiAssistantPage() {
 
   async function finalize(summaryId: string) {
     const res = await api.put(`/ai-summaries/${summaryId}`, { isFinal: true });
-    if (res.success) loadSummaries();
+    if (res.success) {
+      loadSummaries();
+      toast.success("AI summary berhasil difinalkan");
+    } else {
+      toast.error(res.error?.message || "Gagal finalkan");
+    }
+  }
+
+  async function regenerate(summaryId: string) {
+    setRegenerating(true);
+    const res = await api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`);
+    if (res.success && res.data) {
+      setResult(res.data as AiSummary);
+      toast.success("AI berhasil di-regenerate");
+      loadSummaries();
+    } else {
+      toast.error(res.error?.message || "Gagal regenerate AI");
+    }
+    setRegenerating(false);
   }
 
   const typeLabels: Record<AiType, string> = {
@@ -74,7 +93,7 @@ export default function AiAssistantPage() {
         <div className="relative p-6 bg-gradient-to-br from-white via-violet-50/30 to-purple-50/30 rounded-2xl border border-violet-100/50">
           <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Generate ringkasan dan draft dengan AI
+            Generate, review, dan finalkan ringkasan AI
           </p>
         </div>
       </div>
@@ -115,54 +134,23 @@ export default function AiAssistantPage() {
 
       {result && (
         <MagicCard className="p-6" gradientSize={250}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-gray-900">
-              Hasil {typeLabels[aiType]}
-            </h3>
-            <Badge variant={result.isFinal ? "success" : "warning"}>
-              {result.isFinal ? "Final" : "Draft v" + result.version}
-            </Badge>
-          </div>
-          <Separator className="mb-4" />
-          <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
-            {result.content}
-          </div>
-          <div className="mt-6 flex gap-2">
-            {!result.isFinal && (
-              <Button onClick={() => finalize(result.id)} variant="primary" size="sm">
-                Setujui & Finalkan
-              </Button>
-            )}
-          </div>
+          <AiResultCard
+            result={result}
+            typeLabel={typeLabels[aiType]}
+            onFinalize={finalize}
+            onRegenerate={regenerate}
+            regenerating={regenerating}
+          />
         </MagicCard>
       )}
 
       {summaries.length > 0 && (
         <MagicCard className="p-6" gradientSize={300}>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Riwayat AI Summary</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-3">
-            {summaries.map((s) => (
-              <div
-                key={s.id}
-                className="p-4 bg-gray-50/80 rounded-xl cursor-pointer hover:bg-gray-100/80 transition-all hover:shadow-sm"
-                onClick={() => setResult(s)}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-900">
-                    {s.summaryType === "STUDENT_SUMMARY" ? "Student Summary" : "Draft Deskripsi"}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">v{s.version}</span>
-                    <Badge variant={s.isFinal ? "success" : "warning"}>
-                      {s.isFinal ? "Final" : "Draft"}
-                    </Badge>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 line-clamp-2">{s.content}</p>
-              </div>
-            ))}
-          </div>
+          <AiHistoryList
+            summaries={summaries}
+            onSelect={setResult}
+            selectedId={result?.id}
+          />
         </MagicCard>
       )}
     </div>

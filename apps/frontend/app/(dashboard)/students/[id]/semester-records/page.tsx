@@ -5,9 +5,10 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Separator } from "@/components/ui/separator";
+import { ScoreInput } from "@/components/academic/ScoreInput";
+import { AttendanceInput } from "@/components/academic/AttendanceInput";
 import { api } from "@/lib/api";
 import type { AcademicYear, SemesterRecord } from "@/types";
 
@@ -163,73 +164,14 @@ export default function SemesterRecordsPage() {
             <h3 className="text-base font-semibold text-gray-900 mb-1">Nilai Mata Pelajaran</h3>
             <p className="text-xs text-muted-foreground mb-4">Input nilai pengetahuan dan keterampilan</p>
             <Separator className="mb-4" />
-            <div className="space-y-3">
-              {scores.map((score, idx) => (
-                <div key={score.subjectName} className="flex flex-col sm:flex-row sm:items-center gap-3 p-2 bg-gray-50/50 rounded-lg">
-                  <span className="sm:w-44 text-sm font-medium text-gray-700">{score.subjectName}</span>
-                  <div className="flex gap-3">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={score.knowledgeScore || ""}
-                      onChange={(e) => {
-                        const newScores = [...scores];
-                        newScores[idx] = { ...newScores[idx], knowledgeScore: Number(e.target.value) };
-                        setScores(newScores);
-                      }}
-                      placeholder="Pengetahuan"
-                      className="w-24"
-                    />
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={score.skillsScore || ""}
-                      onChange={(e) => {
-                        const newScores = [...scores];
-                        newScores[idx] = { ...newScores[idx], skillsScore: Number(e.target.value) };
-                        setScores(newScores);
-                      }}
-                      placeholder="Keterampilan"
-                      className="w-24"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ScoreInput scores={scores} onChange={setScores} />
           </MagicCard>
 
           <MagicCard className="p-6" gradientSize={200}>
             <h3 className="text-base font-semibold text-gray-900 mb-1">Kehadiran</h3>
             <p className="text-xs text-muted-foreground mb-4">Rekap ketidakhadiran siswa</p>
             <Separator className="mb-4" />
-            <div className="flex flex-wrap gap-4">
-              <Input
-                label="Sakit"
-                type="number"
-                min="0"
-                value={attendance.sick}
-                onChange={(e) => setAttendance((a) => ({ ...a, sick: Number(e.target.value) }))}
-                className="w-28"
-              />
-              <Input
-                label="Izin"
-                type="number"
-                min="0"
-                value={attendance.permission}
-                onChange={(e) => setAttendance((a) => ({ ...a, permission: Number(e.target.value) }))}
-                className="w-28"
-              />
-              <Input
-                label="Alpha"
-                type="number"
-                min="0"
-                value={attendance.absent}
-                onChange={(e) => setAttendance((a) => ({ ...a, absent: Number(e.target.value) }))}
-                className="w-28"
-              />
-            </div>
+            <AttendanceInput attendance={attendance} onChange={setAttendance} />
           </MagicCard>
 
           <Button type="submit" loading={loading} className="w-full">

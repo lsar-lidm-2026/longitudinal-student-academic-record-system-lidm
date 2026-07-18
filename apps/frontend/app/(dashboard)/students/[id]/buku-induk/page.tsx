@@ -6,6 +6,8 @@ import { MagicCard } from "@/components/ui/magic-card";
 import { Badge } from "@/components/ui/badge";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Separator } from "@/components/ui/separator";
+import { ValidationBadges } from "@/components/buku-induk/ValidationBadges";
+import { BiodataCard } from "@/components/buku-induk/BiodataCard";
 import { api } from "@/lib/api";
 
 interface PreviewData {
@@ -60,50 +62,12 @@ export default function BukuIndukPage() {
 
       {validation.length > 0 && (
         <MagicCard className="p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Status Kelengkapan</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {validation.map((v, idx) => (
-              <div key={idx} className="flex items-center gap-3 text-sm p-2 bg-gray-50/50 rounded-lg">
-                <span className="w-36 font-medium text-gray-700">
-                  {v.year} - Sem {v.semester}
-                </span>
-                <Badge variant={v.status.subjectScores === "complete" ? "success" : "danger"}>
-                  Nilai
-                </Badge>
-                <Badge variant={v.status.attendance === "complete" ? "success" : "danger"}>
-                  Hadir
-                </Badge>
-                <Badge variant={v.status.healthRecord === "complete" ? "success" : "danger"}>
-                  Kesehatan
-                </Badge>
-              </div>
-            ))}
-          </div>
+          <ValidationBadges validation={validation} />
         </MagicCard>
       )}
 
       <MagicCard className="p-6" gradientSize={200}>
-        <h3 className="text-base font-semibold text-gray-900 mb-4">Biodata</h3>
-        <Separator className="mb-4" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          <div className="p-3 bg-gray-50/50 rounded-lg">
-            <span className="text-muted-foreground">Nama: </span>
-            <span className="font-medium text-gray-900">{preview.biodata.name}</span>
-          </div>
-          <div className="p-3 bg-gray-50/50 rounded-lg">
-            <span className="text-muted-foreground">NIS: </span>
-            <span className="font-medium text-gray-900">{preview.biodata.nis}</span>
-          </div>
-          <div className="p-3 bg-gray-50/50 rounded-lg">
-            <span className="text-muted-foreground">NISN: </span>
-            <span className="font-medium text-gray-900">{preview.biodata.nisn}</span>
-          </div>
-          <div className="p-3 bg-gray-50/50 rounded-lg">
-            <span className="text-muted-foreground">Kelas: </span>
-            <span className="font-medium text-gray-900">{preview.biodata.className}</span>
-          </div>
-        </div>
+        <BiodataCard biodata={preview.biodata} />
       </MagicCard>
 
       {preview.semesterRecords.map((record: any, idx: number) => (

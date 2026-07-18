@@ -4,15 +4,15 @@ import { checkRole } from "../src/middleware/role";
 
 describe("checkRole middleware", () => {
   it("allows matching role", () => {
-    expect(() => checkRole({ userId: "1", role: "ADMINISTRATOR" }, "ADMINISTRATOR")).not.toThrow();
+    expect(() => checkRole({ role: "ADMINISTRATOR" }, "ADMINISTRATOR")).not.toThrow();
   });
 
   it("allows one of many roles", () => {
-    expect(() => checkRole({ userId: "1", role: "GURU" }, "ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH")).not.toThrow();
+    expect(() => checkRole({ role: "GURU" }, "ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH")).not.toThrow();
   });
 
   it("throws ForbiddenError for non-matching role", () => {
-    expect(() => checkRole({ userId: "1", role: "GURU" }, "ADMINISTRATOR")).toThrow(ForbiddenError);
+    expect(() => checkRole({ role: "GURU" }, "ADMINISTRATOR")).toThrow(ForbiddenError);
   });
 
   it("throws ForbiddenError for undefined user", () => {
@@ -20,19 +20,19 @@ describe("checkRole middleware", () => {
   });
 
   it("throws ForbiddenError for unrecognized role", () => {
-    expect(() => checkRole({ userId: "1", role: "GURU" }, "ADMINISTRATOR", "OPERATOR_SEKOLAH")).toThrow(ForbiddenError);
+    expect(() => checkRole({ role: "GURU" }, "ADMINISTRATOR", "OPERATOR_SEKOLAH")).toThrow(ForbiddenError);
   });
 
   it("allows ADMINISTRATOR when listed in allowed roles", () => {
-    expect(() => checkRole({ userId: "1", role: "ADMINISTRATOR" }, "ADMINISTRATOR", "GURU")).not.toThrow();
+    expect(() => checkRole({ role: "ADMINISTRATOR" }, "ADMINISTRATOR", "GURU")).not.toThrow();
   });
 
   it("throws if ADMINISTRATOR is not in allowed roles list", () => {
-    expect(() => checkRole({ userId: "1", role: "ADMINISTRATOR" }, "GURU", "OPERATOR_SEKOLAH")).toThrow(ForbiddenError);
+    expect(() => checkRole({ role: "ADMINISTRATOR" }, "GURU", "OPERATOR_SEKOLAH")).toThrow(ForbiddenError);
   });
 
   it("allows OPERATOR_SEKOLAH when included", () => {
-    expect(() => checkRole({ userId: "1", role: "OPERATOR_SEKOLAH" }, "ADMINISTRATOR", "OPERATOR_SEKOLAH")).not.toThrow();
+    expect(() => checkRole({ role: "OPERATOR_SEKOLAH" }, "ADMINISTRATOR", "OPERATOR_SEKOLAH")).not.toThrow();
   });
 });
 

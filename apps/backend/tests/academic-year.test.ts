@@ -80,8 +80,9 @@ describe("AcademicYear activate", () => {
     await service.archive(year.id);
     await service.activate(year.id);
     const active = (await service.list()).find((y: any) => y.id === year.id);
-    expect(active.isActive).toBe(true);
-    expect(active.isArchived).toBe(false);
+    expect(active).toBeDefined();
+    expect(active!.isActive).toBe(true);
+    expect(active!.isArchived).toBe(false);
   });
 
   it("throws NotFoundError for non-existent year", async () => {

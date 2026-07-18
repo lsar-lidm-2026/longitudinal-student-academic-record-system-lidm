@@ -26,4 +26,26 @@ export const achievementController = new Elysia({ prefix: "/semester-records" })
           }),
         }
       )
+  )
+  .guard({}, (app) =>
+    app
+      .use(requireAuth)
+      .put(
+        "/achievements/:id",
+        async ({ params, body }) => {
+          const data = await service.update(params.id, body);
+          return success(data);
+        },
+        {
+          body: t.Object({
+            title: t.Optional(t.String()),
+            type: t.Optional(t.String()),
+            description: t.Optional(t.String()),
+          }),
+        }
+      )
+      .delete("/achievements/:id", async ({ params }) => {
+        await service.remove(params.id);
+        return success({ deleted: true });
+      })
   );

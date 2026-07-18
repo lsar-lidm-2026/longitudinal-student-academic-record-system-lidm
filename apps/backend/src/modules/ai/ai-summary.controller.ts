@@ -27,6 +27,11 @@ export const aiSummaryController = new Elysia()
           }),
         }
       )
+      .post("/ai-summaries/:id/regenerate", async ({ params, user }) => {
+        checkRole(user, "ADMINISTRATOR", "GURU");
+        const data = await aiSummaryService.regenerate(params.id);
+        return success(data);
+      })
       .delete("/ai-summaries/:id", async ({ params, user }) => {
         checkRole(user, "ADMINISTRATOR", "GURU");
         await aiSummaryService.remove(params.id);

@@ -1,12 +1,12 @@
-import jwt from "jsonwebtoken";
+import jwt, { type SignOptions } from "jsonwebtoken";
 import { env } from "../config/env";
 import type { JwtPayload } from "../common/types";
 
-function getExpiresIn(): string | number {
+function getExpiresIn(): SignOptions {
   const val = env.jwtExpiresIn;
   // jsonwebtoken accepts either a string like "7d" or a number of seconds
   const num = parseInt(val, 10);
-  return isNaN(num) ? val : num;
+  return { expiresIn: isNaN(num) ? val : num } as SignOptions;
 }
 
 export function generateToken(payload: JwtPayload): string {
@@ -19,7 +19,7 @@ export function generateToken(payload: JwtPayload): string {
       iat: Math.floor(Date.now() / 1000),
     },
     env.jwtSecret,
-    { expiresIn: getExpiresIn() }
+    getExpiresIn()
   );
 }
 
@@ -44,6 +44,6 @@ export function generateRefreshToken(payload: JwtPayload): string {
       iat: Math.floor(Date.now() / 1000),
     },
     env.jwtSecret,
-    { expiresIn: "30d" }
+    { expiresIn: "30d" } as SignOptions
   );
 }

@@ -43,4 +43,23 @@ export const subjectScoreController = new Elysia({ prefix: "/semester-records" }
           }),
         }
       )
+      .put(
+        "/:id/subject-scores/:scoreId",
+        async ({ params, body }) => {
+          const data = await service.update(params.scoreId, body);
+          return success(data);
+        },
+        {
+          body: t.Object({
+            subjectName: t.Optional(t.String()),
+            knowledgeScore: t.Optional(t.Number()),
+            skillsScore: t.Optional(t.Number()),
+            notes: t.Optional(t.String()),
+          }),
+        }
+      )
+      .delete("/:id/subject-scores/:scoreId", async ({ params }) => {
+        await service.remove(params.scoreId);
+        return success({ deleted: true });
+      })
   );

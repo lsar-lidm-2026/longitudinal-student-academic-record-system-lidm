@@ -23,6 +23,30 @@ export const authController = new Elysia({ prefix: "/auth" })
       }),
     }
   )
+  .post(
+    "/refresh",
+    async ({ body, set }) => {
+      try {
+        const result = await authService.refresh(body.refreshToken);
+        return success(result);
+      } catch (e: any) {
+        set.status = 401;
+        return errorResponse("UNAUTHORIZED", e.message);
+      }
+    },
+    {
+      body: t.Object({
+        refreshToken: t.String(),
+      }),
+    }
+  )
+  .post(
+    "/logout",
+    async ({ body }) => {
+      // Client-side token invalidation; server acknowledges logout
+      return success({ message: "Logged out successfully" });
+    }
+  )
   .use(requireAuth)
   .get("/me", async ({ user }) => {
     const data = await authService.getMe(user.userId);

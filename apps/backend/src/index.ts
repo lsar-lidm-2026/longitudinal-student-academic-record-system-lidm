@@ -18,6 +18,7 @@ import { dashboardController } from "./modules/dashboard/dashboard.controller";
 import { aiController } from "./modules/ai/ai.controller";
 import { aiSummaryController } from "./modules/ai/ai-summary.controller";
 import { mlController } from "./modules/ml/ml.controller";
+import { usersController } from "./modules/users/users.controller";
 import { checkDbHealth } from "./lib/prisma";
 import { trainModels } from "./modules/ml/trainer";
 import { getModels } from "./modules/ml/ml.service";
@@ -112,6 +113,7 @@ const app = new Elysia()
       .use(aiController)
       .use(aiSummaryController)
       .use(mlController)
+      .use(usersController)
   )
   .listen(env.port);
 

@@ -108,3 +108,70 @@ export async function listUsers() {
     orderBy: { createdAt: "desc" },
   });
 }
+
+export async function refresh(refreshToken: string) {
+  try {
+    const { verifyToken } = await import("../../lib/jwt");
+    const decoded = verifyToken(refreshToken);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+    });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError("Invalid refresh token");
+    }
+
+    const payload: JwtPayload = {
+      userId: user.id,
+      username: user.username,
+      role: user.role as Role,
+      name: user.name,
+    };
+
+    return {
+      accessToken: generateToken(payload),
+      refreshToken: generateRefreshToken(payload),
+      user: payload,
+    };
+  } catch {
+    throw new UnauthorizedError("Invalid or expired refresh token");
+  }
+}
+
+export async function updateUser(
+  id: string,
+  data: { name?: string; role?: Role; isActive?: boolean }
+) {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) throw new NotFoundError("User not found");
+
+  return prisma.user.update({
+    where: { id },
+    data,
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+    },
+  });
+}
+
+export async function toggleUserStatus(id: string) {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) throw new NotFoundError("User not found");
+
+  return prisma.user.update({
+    where: { id },
+    data: { isActive: !user.isActive },
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+    },
+  });
+}

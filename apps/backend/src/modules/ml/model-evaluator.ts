@@ -229,7 +229,7 @@ function approximateSilhouette(
   data: number[][],
   labels: number[],
   centroids: number[][]
-): number {
+): number | null {
   const n = data.length;
   if (n === 0 || centroids.length < 2) return null;
 

@@ -47,22 +47,25 @@ export function useAuth() {
 
     if (res.success && res.data) {
       const data = res.data as AuthResult;
-      api.setToken(data.accessToken);
+      api.setTokens(data.accessToken, data.refreshToken);
       setState({ user: data.user, loading: false, error: null });
       return true;
     } else {
       setState({
         user: null,
         loading: false,
-        error: res.error?.message || "Login failed",
+        error: res.error?.message || "Login gagal",
       });
       return false;
     }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Attempt server-side logout (best-effort)
+    await api.post("/auth/logout").catch(() => {});
     api.setToken(null);
     setState({ user: null, loading: false, error: null });
+    window.location.href = "/login";
   }, []);
 
   return { ...state, login, logout };

@@ -13,4 +13,9 @@ export const dashboardController = new Elysia({ prefix: "/dashboard" })
         const data = await service.getSummary(user.userId, user.role);
         return success(data);
       })
+      .get("/administrative-status", async ({ user }) => {
+        checkRole(user, "ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH");
+        const data = await service.getAdministrativeStatus(user.userId, user.role);
+        return success(data);
+      })
   );

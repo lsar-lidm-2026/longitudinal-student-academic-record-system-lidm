@@ -39,6 +39,20 @@ export async function upsert(
   });
 }
 
+export async function update(
+  id: string,
+  data: {
+    subjectName?: string;
+    knowledgeScore?: number;
+    skillsScore?: number;
+    notes?: string;
+  }
+) {
+  const item = await prisma.subjectScore.findUnique({ where: { id } });
+  if (!item) throw new NotFoundError("Subject score not found");
+  return prisma.subjectScore.update({ where: { id }, data });
+}
+
 export async function remove(id: string) {
   const item = await prisma.subjectScore.findUnique({ where: { id } });
   if (!item) throw new NotFoundError("Subject score not found");

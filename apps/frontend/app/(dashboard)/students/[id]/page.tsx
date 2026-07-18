@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { MagicCard } from "@/components/ui/magic-card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { TracingBeam } from "@/components/ui/tracing-beam";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StudentTimeline } from "@/components/students/StudentTimeline";
 import { api } from "@/lib/api";
-import type { StudentProfile, SemesterRecord } from "@/types";
+import type { StudentProfile } from "@/types";
 
 export default function StudentDetailPage() {
   const params = useParams();
@@ -83,84 +83,10 @@ export default function StudentDetailPage() {
           </div>
         ) : (
           <TracingBeam className="px-4">
-            <div className="space-y-6">
-              {semesterRecords.map((record, idx) => (
-                <SemesterCard
-                  key={record.id}
-                  record={record}
-                  isLast={idx === semesterRecords.length - 1}
-                />
-              ))}
-            </div>
+            <StudentTimeline semesterRecords={semesterRecords} />
           </TracingBeam>
         )}
       </MagicCard>
-    </div>
-  );
-}
-
-function SemesterCard({
-  record,
-  isLast,
-}: {
-  record: SemesterRecord;
-  isLast: boolean;
-}) {
-  const avgKnowledge =
-    record.subjectScores.length > 0
-      ? Math.round(
-          (record.subjectScores.reduce((s, sc) => s + sc.knowledgeScore, 0) /
-            record.subjectScores.length) * 100
-        ) / 100
-      : 0;
-
-  return (
-    <div className={`relative pl-8 ${!isLast ? "pb-6" : ""}`}>
-      {/* Timeline dot */}
-      <div className="absolute left-0 top-1 w-4 h-4 rounded-full border-2 border-blue-500 bg-white" />
-      {!isLast && (
-        <div className="absolute left-[7px] top-5 w-0.5 h-full bg-gradient-to-b from-blue-300 to-transparent" />
-      )}
-
-      <div className="bg-gray-50/80 rounded-xl p-4 hover:bg-gray-100/80 transition-colors">
-        <div className="flex items-center gap-2 mb-2">
-          <Badge variant="info">
-            Sem {record.semester === 1 ? "Ganjil" : "Genap"}
-          </Badge>
-          <span className="text-xs text-muted-foreground">{record.academicYear?.year}</span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span>
-            Rata-rata: <strong className="text-blue-700">{avgKnowledge}</strong>
-          </span>
-          {record.attendance && (
-            <span className="text-muted-foreground">
-              Hadir: {record.attendance.sick + record.attendance.permission + record.attendance.absent} hari
-            </span>
-          )}
-          {record.achievements.length > 0 && (
-            <Badge variant="success">
-              {record.achievements.length} prestasi
-            </Badge>
-          )}
-        </div>
-
-        {record.subjectScores.length > 0 && (
-          <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-            {record.subjectScores.map((sc) => (
-              <div key={sc.id} className="text-xs bg-white rounded-lg p-2 border border-gray-100">
-                <span className="text-gray-600">{sc.subjectName}</span>
-                <div className="flex gap-1 mt-0.5">
-                  <span className="font-medium text-blue-600">{sc.knowledgeScore}</span>
-                  <span className="text-gray-300">/</span>
-                  <span className="font-medium text-green-600">{sc.skillsScore}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

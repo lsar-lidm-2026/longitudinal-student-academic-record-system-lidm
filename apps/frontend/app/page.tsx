@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MagicCard } from "@/components/ui/magic-card";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
 import { Separator } from "@/components/ui/separator";
+import { AdministrativeStatus } from "@/components/dashboard/AdministrativeStatus";
 import { api } from "@/lib/api";
 import type { DashboardSummary } from "@/types";
 
@@ -107,6 +107,8 @@ export default function DashboardPage() {
           </div>
         </MagicCard>
       )}
+
+      <AdministrativeStatus />
     </div>
   );
 }
