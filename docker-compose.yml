@@ -36,9 +36,6 @@ services:
       - app-shared-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.lidm-frontend.rule=Host(`lidm.asepharyana.my.id`)"
-      - "traefik.http.routers.lidm-frontend.entrypoints=web"
-      - "traefik.http.services.lidm-frontend.loadbalancer.server.port=3000"
 
   backend:
     build:
@@ -89,14 +86,6 @@ services:
       - app-shared-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.lidm-backend.rule=Host(`lidm-api.asepharyana.my.id`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.lidm-backend.entrypoints=web"
-      - "traefik.http.services.lidm-backend.loadbalancer.server.port=3001"
-      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolalloworiginlist=https://lidm.asepharyana.my.id"
-      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
-      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
-      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolmaxage=86400"
-      - "traefik.http.routers.lidm-backend.middlewares=lidm-cors@docker"
 
 networks:
   app-shared-net:
