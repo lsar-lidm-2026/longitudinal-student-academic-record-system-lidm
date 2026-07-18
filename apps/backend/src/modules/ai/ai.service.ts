@@ -6,7 +6,7 @@ import {
   buildDraftDescriptionPrompt,
   buildTransitionSummaryPrompt,
 } from "./prompts";
-import type { SummaryType } from "../../generated/prisma";
+import type { SummaryType } from "../../generated/prisma/client";
 
 async function getStudentAcademicData(studentId: string) {
   const student = await prisma.student.findUnique({

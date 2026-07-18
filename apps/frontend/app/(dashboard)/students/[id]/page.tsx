@@ -10,6 +10,7 @@ import { BorderBeam } from "@/components/ui/border-beam";
 import { TracingBeam } from "@/components/ui/tracing-beam";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StudentTimeline } from "@/components/students/StudentTimeline";
+import { StudentDocuments } from "@/components/students/StudentDocuments";
 import { api } from "@/lib/api";
 import type { StudentProfile } from "@/types";
 
@@ -111,6 +112,9 @@ export default function StudentDetailPage() {
           </TracingBeam>
         )}
       </MagicCard>
+
+      {/* Documents */}
+      <StudentDocuments studentId={params.id as string} />
     </div>
   );
 }

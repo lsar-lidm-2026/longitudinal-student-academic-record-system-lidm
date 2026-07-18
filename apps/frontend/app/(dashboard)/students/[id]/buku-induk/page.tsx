@@ -28,6 +28,7 @@ interface PreviewData {
     name: string;
     gender: string;
     className: string;
+    photoUrl?: string | null;
   };
   semesterRecords: SemesterRecordPreview[];
 }
@@ -115,7 +116,7 @@ export default function BukuIndukPage() {
       )}
 
       <MagicCard className="p-6" gradientSize={200}>
-        <BiodataCard biodata={preview.biodata} />
+        <BiodataCard biodata={preview.biodata} studentId={params.id as string} />
       </MagicCard>
 
       {preview.semesterRecords.map((record) => (

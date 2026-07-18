@@ -3,7 +3,7 @@ import { verifyPassword, hashPassword } from "../../lib/hash";
 import { generateToken, generateRefreshToken } from "../../lib/jwt";
 import { UnauthorizedError, NotFoundError, ConflictError } from "../../common/error";
 import type { JwtPayload } from "../../common/types";
-import type { Role } from "../../generated/prisma";
+import type { Role } from "../../generated/prisma/client";
 
 export interface LoginInput {
   username: string;

@@ -53,6 +53,7 @@ export interface Student {
   name: string;
   gender: string;
   classId: string;
+  photoUrl?: string | null;
   class?: { id: string; name: string };
 }
 
@@ -92,6 +93,17 @@ export interface Achievement {
   title: string;
   type: string;
   description: string | null;
+  attachmentUrl?: string | null;
+}
+
+export interface StudentDocument {
+  id: string;
+  studentId: string;
+  name: string;
+  fileUrl: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
 }
 
 export interface HealthRecord {

@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma";
-import type { Role } from "../../generated/prisma";
+import type { Role } from "../../generated/prisma/client";
 
 export async function getSummary(userId: string, role: Role) {
   if (role === "ADMINISTRATOR" || role === "KEPALA_SEKOLAH") {

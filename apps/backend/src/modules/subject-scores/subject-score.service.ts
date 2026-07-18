@@ -1,6 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { NotFoundError } from "../../common/error";
-import { Prisma } from "../../generated/prisma";
+import { Prisma } from "../../generated/prisma/client";
 
 export async function upsert(
   semesterRecordId: string,

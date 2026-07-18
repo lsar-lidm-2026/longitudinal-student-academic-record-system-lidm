@@ -101,13 +101,15 @@ model Student {
   name      String
   gender    String
   classId   String   // Wajib untuk middleware penentu hak akses wali kelas
+  photoUrl  String?  // Foto siswa — disimpan di S3 (FR-04 tambahan)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relasi
-  class        Class            @relation(fields: [classId], references: [id])
-  semesterRecords SemesterRecord[]
+  class            Class              @relation(fields: [classId], references: [id])
+  semesterRecords  SemesterRecord[]
   predictedOutcomes PredictedOutcome[]
+  documents        StudentDocument[]
 
   @@map("student")
 }
@@ -177,6 +179,7 @@ model Achievement {
   title            String   // Nama Prestasi
   type             String   // Akademik / Non-Akademik
   description      String?  @db.Text
+  attachmentUrl    String?  // File pendukung prestasi (sertifikat, piagam) — disimpan di S3
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -221,6 +224,22 @@ model AiSummary {
   @@map("ai_summary")
 }
 
+// ── Student Documents (S3) ─────────────────────────────────────────────
+
+model StudentDocument {
+  id        String   @id @default(uuid())
+  studentId String
+  name      String   // Nama dokumen (misal: "Akte Kelahiran", "Kartu Keluarga")
+  fileUrl   String   // URL file di S3
+  mimeType  String   // MIME type file
+  fileSize  Int      // Ukuran file dalam bytes
+  createdAt DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("student_document")
+}
+
 // ── ML Models ─────────────────────────────────────────────────────
 
 enum ModelType {
@@ -255,7 +274,7 @@ model MlModel {
   name         String
   modelType    ModelType
   version      Int
-  filePath     String?   // Path ke .onnx file
+  filePath     String?   // Path ke .onnx file (lokal atau S3 URL)
   metrics      Json?     // MAE, RMSE, F1, akurasi, dll
   featureList  Json?     // Daftar fitur yang digunakan
   isActive     Boolean   @default(false)

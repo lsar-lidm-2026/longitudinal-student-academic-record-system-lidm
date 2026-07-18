@@ -17,6 +17,9 @@ import { prisma } from "../../lib/prisma";
 import { computeFeatures } from "./features";
 import { trainKMeans, type KMeansResult } from "./models/k-means";
 import { exportKMeansOnnx, exportKMeansJson } from "./models/onnx-export";
+import { uploadToS3 } from "../../lib/s3";
+import { env } from "../../config/env";
+import * as fs from "fs";
 import type { StudentFeatures } from "./features";
 
 export interface TrainedModels {
@@ -111,7 +114,7 @@ export async function trainModels(): Promise<TrainedModels> {
 
   console.log(`[Analytics] K-Means trained on ${allFeatures.length} students (${clusterModel.iterations} iterations, inertia: ${clusterModel.inertia.toFixed(2)})`);
 
-  // ── Persist model to disk ──────────────────────────────────────
+  // ── Persist model to disk & S3 ────────────────────────────────
   try {
     if (clusterModel) {
       const onnxExported = exportKMeansOnnx(
@@ -126,10 +129,23 @@ export async function trainModels(): Promise<TrainedModels> {
         ["avgKnowledge", "avgSkills", "totalAbsence", "achievementCount"]
       );
 
+      // Upload to S3 if configured
+      let filePath = onnxExported.filePath;
+      if (env.s3Configured() && fs.existsSync(onnxExported.filePath)) {
+        try {
+          const fileBuffer = fs.readFileSync(onnxExported.filePath);
+          const s3Result = await uploadToS3(fileBuffer, `kmeans-model.onnx`, "application/octet-stream", "ml-models");
+          filePath = s3Result.url;
+          console.log(`[Analytics] Model uploaded to S3: ${s3Result.url}`);
+        } catch (s3Err: any) {
+          console.warn(`[Analytics] S3 upload failed, keeping local path: ${s3Err.message}`);
+        }
+      }
+
       await prisma.mlModel.upsert({
         where: { modelType_version: { modelType: "BEHAVIOR_CLUSTER", version: 1 } },
         update: {
-          filePath: onnxExported.filePath,
+          filePath,
           metrics: onnxExported.metrics as any,
           isActive: true,
           trainedAt,
@@ -138,7 +154,7 @@ export async function trainModels(): Promise<TrainedModels> {
           name: "Behavior Cluster v1",
           modelType: "BEHAVIOR_CLUSTER",
           version: 1,
-          filePath: onnxExported.filePath,
+          filePath,
           metrics: onnxExported.metrics as any,
           featureList: ["avgKnowledge", "avgSkills", "totalAbsence", "achievementCount"],
           isActive: true,

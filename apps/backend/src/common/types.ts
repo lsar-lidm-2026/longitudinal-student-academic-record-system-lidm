@@ -1,4 +1,4 @@
-import { Role } from "../generated/prisma";
+import { Role } from "../generated/prisma/client";
 
 export interface ApiResponse<T = unknown> {
   success: boolean;

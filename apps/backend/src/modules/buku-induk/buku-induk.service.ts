@@ -29,6 +29,7 @@ export async function getPreview(studentId: string) {
       name: student.name,
       gender: student.gender,
       className: student.class.name,
+      photoUrl: student.photoUrl,
     },
     semesterRecords: records.map((r) => ({
       year: r.academicYear.year,
