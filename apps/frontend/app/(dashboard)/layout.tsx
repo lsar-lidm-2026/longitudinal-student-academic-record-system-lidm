@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Toaster } from "sonner";
 import { Sidebar } from "../../components/layout/Sidebar";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
+import { ChatBot } from "../../components/chatbot/ChatBot";
 import { api } from "../../lib/api";
 import type { JwtPayload } from "../../types";
 
@@ -72,6 +73,7 @@ export default function DashboardLayout({
       <main className="flex-1 p-6 overflow-auto">
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
+      <ChatBot />
     </div>
   );
 }

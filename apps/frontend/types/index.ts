@@ -126,6 +126,14 @@ export interface StudentProfile {
   semesterRecords: SemesterRecord[];
 }
 
+// ── Chatbot Types ─────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp?: number;
+}
+
 // ── ML Types ──────────────────────────────────────────────────────────
 
 export interface RiskResult {
