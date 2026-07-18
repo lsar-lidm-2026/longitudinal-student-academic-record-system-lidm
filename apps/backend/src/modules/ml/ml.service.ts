@@ -6,6 +6,7 @@ import { analyzeRisk, analyzeTrend, explainCluster } from "./agent";
 import { evaluateModel } from "./eval-agent";
 import { runOnnxInference, clearOnnxCache } from "./onnx-runner";
 import type { StudentFeatures } from "./features";
+import * as fs from "fs";
 
 /** Cache the active ONNX file paths — refreshed on retrain */
 let onnxPaths: Record<string, string | null> = {};
@@ -18,12 +19,42 @@ async function refreshOnnxPaths() {
   });
   onnxPaths = {};
   for (const m of models) {
-    if (m.filePath) {
+    if (m.filePath && fs.existsSync(m.filePath)) {
       onnxPaths[m.modelType] = m.filePath;
     }
   }
   // Clear ONNX Runtime session cache since models may have changed
   clearOnnxCache();
+}
+
+/**
+ * Auto-generate ONNX files if they don't exist yet.
+ * Called before any ML inference that needs ONNX.
+ */
+async function ensureOnnxExists(): Promise<void> {
+  if (Object.keys(onnxPaths).length > 0) return; // Already have cached paths
+
+  // Check DB for model records
+  const records = await prisma.mlModel.findMany({
+    where: { isActive: true },
+    select: { id: true, modelType: true, filePath: true, trainedAt: true },
+    orderBy: { trainedAt: "desc" },
+  });
+
+  // If records exist but no valid file paths, or no records at all → retrain
+  const needsRetrain = records.length === 0 || records.some((r) => !r.filePath || !fs.existsSync(r.filePath));
+  if (needsRetrain) {
+    try {
+      console.log("[ML] ONNX files missing — auto-regenerating...");
+      await retrain();
+      await refreshOnnxPaths();
+      console.log("[ML] ONNX files generated");
+    } catch (err: any) {
+      console.warn(`[ML] Auto-generation failed: ${err.message}`);
+    }
+  } else {
+    await refreshOnnxPaths();
+  }
 }
 
 // ============================================================
@@ -58,10 +89,8 @@ export async function getStudentRisk(studentId: string) {
   let riskLevel: string;
   let riskConfidence: number;
 
-  // Refresh ONNX paths if not loaded yet
-  if (Object.keys(onnxPaths).length === 0) {
-    await refreshOnnxPaths();
-  }
+  // Auto-generate ONNX if not exist
+  if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
 
   // Try ONNX Runtime inference
   const onnxResult = await runOnnxInference(onnxPaths["RISK_CLASSIFICATION"], [
@@ -262,7 +291,7 @@ export async function getStudentTrend(studentId: string) {
   let regressionSlope = 0;
   let regressionRSquared = 0;
 
-  if (Object.keys(onnxPaths).length === 0) await refreshOnnxPaths();
+  if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
   const onnxResult = await runOnnxInference(onnxPaths["TREND_PREDICTION"], [nextSemesterIndex]);
 
   if (onnxResult && onnxResult.length > 0) {
@@ -360,8 +389,8 @@ export async function getClassCluster(classId: string) {
 
   const clusterData: Record<number, { totalKnowledge: number; totalAbsence: number; count: number; label: string }> = {};
 
-  // Ensure ONNX paths are loaded
-  if (Object.keys(onnxPaths).length === 0) await refreshOnnxPaths();
+  // Auto-generate ONNX if not exist
+  if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
 
   for (const student of students) {
     try {
