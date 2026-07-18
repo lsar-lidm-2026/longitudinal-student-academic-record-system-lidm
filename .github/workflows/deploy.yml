@@ -1,0 +1,61 @@
+name: Deploy to VPS
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Docker Images"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Deploy via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_TARGET_DIR: ${{ secrets.VPS_TARGET_DIR || '/root/lidm' }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H -t ed25519,rsa "$VPS_HOST" >> ~/.ssh/known_hosts
+
+          SSH_OPTS=(-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p -o ControlPersist=300 -o StrictHostKeyChecking=yes)
+
+          # Ensure target dir exists
+          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "mkdir -p $VPS_TARGET_DIR"
+
+          # Copy compose file
+          scp "${SSH_OPTS[@]}" docker-compose.yml "$VPS_USER@$VPS_HOST:$VPS_TARGET_DIR/docker-compose.yml"
+
+          # Deploy
+          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" bash -s <<SHELL
+            set -euo pipefail
+            cd "$VPS_TARGET_DIR"
+
+            # Create shared network if not exists
+            docker network inspect app-shared-net >/dev/null 2>&1 || docker network create app-shared-net
+
+            # Login to GHCR for image pull
+            echo "$GHCR_PAT" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin 2>/dev/null || true
+
+            # Pull latest images
+            docker compose pull
+
+            # Restart services
+            docker compose up -d --remove-orphans
+
+            # Clean up old images
+            docker image prune -a -f --filter "until=24h" || true
+SHELL

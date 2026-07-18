@@ -1,0 +1,106 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: https://lidm-api.asepharyana.my.id/api
+    container_name: lidm-frontend
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "bun -e \"fetch('http://localhost:3000').then(r => r.status === 200 ? process.exit(0) : process.exit(1))\""
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - app-shared-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidm-frontend.rule=Host(`lidm.asepharyana.my.id`)"
+      - "traefik.http.routers.lidm-frontend.entrypoints=websecure"
+      - "traefik.http.routers.lidm-frontend.tls=true"
+      - "traefik.http.routers.lidm-frontend.tls.certresolver=cloudflare"
+      - "traefik.http.services.lidm-frontend.loadbalancer.server.port=3000"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: lidm-backend
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - AI_LLM_API_KEY=${AI_LLM_API_KEY:-}
+      - AI_LLM_BASE_URL=${AI_LLM_BASE_URL:-}
+      - AI_LLM_MODEL=${AI_LLM_MODEL:-}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-}
+      - S3_DEFAULT_REGION=${S3_DEFAULT_REGION:-us-east-1}
+      - S3_BUCKET=${S3_BUCKET:-lsar}
+      - CORS_ORIGIN=${CORS_ORIGIN:-https://lidm.asepharyana.my.id}
+      - CLUSTERING_ENABLED=${CLUSTERING_ENABLED:-false}
+      - MODEL_PATH=${MODEL_PATH:-/tmp/models}
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "bun -e \"fetch('http://localhost:3001/api/health').then(r => r.status === 200 ? process.exit(0) : process.exit(1))\""
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - app-shared-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidm-backend.rule=Host(`lidm-api.asepharyana.my.id`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.lidm-backend.entrypoints=websecure"
+      - "traefik.http.routers.lidm-backend.tls=true"
+      - "traefik.http.routers.lidm-backend.tls.certresolver=cloudflare"
+      - "traefik.http.services.lidm-backend.loadbalancer.server.port=3001"
+      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolalloworiginlist=https://lidm.asepharyana.my.id"
+      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
+      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.lidm-cors.headers.accesscontrolmaxage=86400"
+      - "traefik.http.routers.lidm-backend.middlewares=lidm-cors@docker"
+
+networks:
+  app-shared-net:
+    name: app-shared-net
+    external: true

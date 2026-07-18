@@ -1,0 +1,33 @@
+# ── Build Stage ───────────────────────────────────────────────────────
+FROM oven/bun:1 AS build
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+WORKDIR /app
+
+# Cache dependencies (monorepo with root bun.lock)
+COPY bun.lock package.json ./
+COPY apps/frontend/package.json ./apps/frontend/
+RUN bun install --frozen-lockfile --production --cwd apps/frontend
+
+# Copy source
+COPY apps/frontend/ ./apps/frontend/
+
+# Build Next.js
+WORKDIR /app/apps/frontend
+RUN bun run build
+
+# ── Runner Stage ─────────────────────────────────────────────────────
+FROM oven/bun:1-slim
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Copy standalone build output
+COPY --from=build /app/apps/frontend/.next/standalone ./
+COPY --from=build /app/apps/frontend/.next/static ./.next/static
+COPY --from=build /app/apps/frontend/public ./public
+
+EXPOSE 3000
+
+CMD ["bun", "run", "server.js"]
