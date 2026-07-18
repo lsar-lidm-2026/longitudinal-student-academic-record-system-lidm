@@ -5,53 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
-  build-and-deploy:
+  deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Login GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      # ── Build & Push Frontend ────────────────────────────────────
-      - name: Build & Push Frontend
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.frontend
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/frontend:latest
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/frontend:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/frontend:buildcache,mode=max
-
-      # ── Build & Push Backend ─────────────────────────────────────
-      - name: Build & Push Backend
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.backend
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/backend:latest
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/backend:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/backend:buildcache,mode=max
-
-      # ── Deploy to VPS ────────────────────────────────────────────
       - name: Deploy to VPS
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -72,14 +33,33 @@ jobs:
           # Ensure target dir exists
           ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "mkdir -p $VPS_TARGET_DIR"
 
-          # Copy compose file
-          scp "${SSH_OPTS[@]}" docker-compose.yml "$VPS_USER@$VPS_HOST:$VPS_TARGET_DIR/docker-compose.yml"
+          # Send source to VPS via tar pipe
+          tar cz \
+            --exclude=node_modules \
+            --exclude=.git \
+            --exclude=.next \
+            --exclude='*.lock' \
+            deploy.sh \
+            docker-compose.yml \
+            Dockerfile.frontend \
+            Dockerfile.backend \
+            apps/backend/package.json \
+            apps/backend/bun.lock \
+            apps/backend/tsconfig.json \
+            apps/backend/prisma/ \
+            apps/backend/src/ \
+            apps/frontend/package.json \
+            apps/frontend/bun.lock \
+            apps/frontend/next.config.ts \
+            apps/frontend/tsconfig.json \
+            apps/frontend/public/ \
+            apps/frontend/app/ \
+            apps/frontend/components/ \
+            apps/frontend/lib/ \
+            apps/frontend/hooks/ \
+            apps/frontend/types/ \
+            apps/frontend/middleware.ts \
+          | ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cd $VPS_TARGET_DIR && tar xz"
 
-          # Deploy via SSH (inline commands, no heredoc to avoid YAML parsing conflict)
-          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" bash -c "
-            cd $VPS_TARGET_DIR
-            docker network inspect app-shared-net >/dev/null 2>&1 || docker network create app-shared-net
-            docker compose pull 2>/dev/null || true
-            docker compose up -d --remove-orphans
-            docker image prune -a -f --filter 'until=24h' 2>/dev/null || true
-          "
+          # Run deploy script on VPS
+          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cd $VPS_TARGET_DIR && bash deploy.sh"
