@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { NotFoundError } from "../../common/error";
+import { Prisma } from "../../generated/prisma/client";
 
 export async function getPreview(studentId: string) {
   const student = await prisma.student.findUnique({
@@ -31,14 +32,24 @@ export async function getPreview(studentId: string) {
       className: student.class.name,
       photoUrl: student.photoUrl,
     },
-    semesterRecords: records.map((r) => ({
-      year: r.academicYear.year,
-      semester: r.semester,
-      subjectScores: r.subjectScores,
-      attendance: r.attendance,
-      achievements: r.achievements,
-      healthRecord: r.healthRecord,
-    })),
+    semesterRecords: records.map(
+      (r: Prisma.SemesterRecordGetPayload<{
+        include: {
+          academicYear: { select: { year: true } };
+          subjectScores: true;
+          attendance: true;
+          achievements: true;
+          healthRecord: true;
+        };
+      }>) => ({
+        year: r.academicYear.year,
+        semester: r.semester,
+        subjectScores: r.subjectScores,
+        attendance: r.attendance,
+        achievements: r.achievements,
+        healthRecord: r.healthRecord,
+      })
+    ),
   };
 }
 
@@ -60,15 +71,24 @@ export async function getValidationStatus(studentId: string) {
     orderBy: [{ academicYear: { year: "asc" } }, { semester: "asc" }],
   });
 
-  return records.map((r) => ({
-    year: r.academicYear.year,
-    semester: r.semester,
-    status: {
-      subjectScores: r._count.subjectScores > 0 ? "complete" : "incomplete",
-      attendance: r.attendance ? "complete" : "incomplete",
-      healthRecord: r.healthRecord ? "complete" : "incomplete",
-    },
-  }));
+  return records.map(
+    (r: Prisma.SemesterRecordGetPayload<{
+      include: {
+        academicYear: { select: { year: true } };
+        _count: { select: { subjectScores: true } };
+        attendance: { select: { id: true } };
+        healthRecord: { select: { id: true } };
+      };
+    }>) => ({
+      year: r.academicYear.year,
+      semester: r.semester,
+      status: {
+        subjectScores: r._count.subjectScores > 0 ? "complete" : "incomplete",
+        attendance: r.attendance ? "complete" : "incomplete",
+        healthRecord: r.healthRecord ? "complete" : "incomplete",
+      },
+    })
+  );
 }
 
 export async function getWorkspace(studentId: string) {
