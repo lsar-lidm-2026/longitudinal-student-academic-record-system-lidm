@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: https://lidm-api.asepharyana.my.id/api
+    image: ghcr.io/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm/frontend:latest
     container_name: lidm-frontend
     restart: always
     environment:
@@ -45,6 +46,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    image: ghcr.io/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm/backend:latest
     container_name: lidm-backend
     restart: always
     environment:
