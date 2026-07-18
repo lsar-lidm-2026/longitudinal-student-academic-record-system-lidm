@@ -7,8 +7,11 @@ COPY apps/backend/package.json apps/backend/bun.lock ./
 RUN bun install --frozen-lockfile
 
 COPY apps/backend/ ./
-# --schema bypasses prisma.config.ts which requires DATABASE_URL at build time
-RUN bunx prisma generate --schema=prisma/schema.prisma
+
+# Prisma 7.x requires DATABASE_URL even for generate (prisma.config.ts loads first).
+# Pass dummy — generate doesn't connect to DB, only reads schema.
+ARG DATABASE_URL
+RUN DATABASE_URL=${DATABASE_URL:-postgres://dummy:dummy@localhost:5432/dummy} bunx prisma generate
 
 # ── Runner Stage ─────────────────────────────────────────────────────
 FROM oven/bun:1-slim
