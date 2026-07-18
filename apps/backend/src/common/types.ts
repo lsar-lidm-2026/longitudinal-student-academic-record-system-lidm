@@ -19,6 +19,7 @@ export interface JwtPayload {
   username: string;
   role: Role;
   name: string;
+  iat?: number;
 }
 
 export interface PaginationParams {

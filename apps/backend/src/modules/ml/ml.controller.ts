@@ -25,7 +25,6 @@ export const mlController = new Elysia({ prefix: "/ml" })
           trainedAt: data.trainedAt,
           status: "success",
           models: {
-            hasRiskModel: data.riskTree !== null,
             hasClusterModel: data.clusterModel !== null,
           },
         });

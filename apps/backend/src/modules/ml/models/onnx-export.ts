@@ -4,10 +4,14 @@
  * Uses onnx-proto (protobufjs wrapper) to create ONNX ModelProto objects
  * and serialize them to binary .onnx files.
  *
- * Supported exports:
+ * Supported exports (VALID):
  * - Linear Regression → ONNX Gemm op (y = wx + b)
- * - Decision Tree → ONNX metadata + JSON companion
- * - K-Means → Sub → Pow → ReduceSum → ArgMin graph
+ * - K-Means → Sub → Pow → ReduceSum → ArgMin graph (valid computation)
+ *
+ * NOT exported (because they were FAKE):
+ * - Decision Tree → previous export was a JSON blob disguised as ONNX
+ *   (Constant node with tree data encoded as a tensor — NOT valid inference).
+ *   Use the JSON companion file for rule inspection instead.
  */
 
 import { env } from "../../../config/env";
@@ -33,7 +37,6 @@ function float32ToBytes(value: number): Buffer {
 
 function int64ToBytes(value: number): Buffer {
   const buf = Buffer.alloc(8);
-  // Write as signed 64-bit little-endian (fits in 32 bits for our use case)
   buf.writeBigInt64LE(BigInt(value), 0);
   return buf;
 }
@@ -74,18 +77,19 @@ function makeValueInfo(name: string, dims: number[], elemType: number = 1) {
 /**
  * Export a linear regression model (y = slope * x + intercept) as ONNX.
  * Architecture: Input → Gemm → Output
+ * Valid ONNX computation graph.
  */
 export function exportLinearRegressionOnnx(
   modelName: string,
   slope: number,
   intercept: number
 ): OnnxExportResult {
-  const modelDir = path.resolve(env.mlModelPath);
+  const modelDir = path.resolve(env.modelPath);
   if (!fs.existsSync(modelDir)) fs.mkdirSync(modelDir, { recursive: true });
 
   const modelProto = $onnx.ModelProto.create({
     irVersion: 9,
-    producerName: "LSAR-ML",
+    producerName: "LSAR-Analytics",
     producerVersion: "1.0",
     domain: "lsar",
     modelVersion: 1,
@@ -128,66 +132,6 @@ export function exportLinearRegressionOnnx(
 }
 
 /**
- * Export a decision tree model as ONNX + JSON.
- */
-export function exportDecisionTreeOnnx(
-  modelName: string,
-  tree: any,
-  featureNames: string[]
-): OnnxExportResult {
-  const modelDir = path.resolve(env.mlModelPath);
-  if (!fs.existsSync(modelDir)) fs.mkdirSync(modelDir, { recursive: true });
-
-  const treeData = JSON.stringify({
-    type: "DecisionTree",
-    featureNames,
-    tree,
-    exportedAt: new Date().toISOString(),
-  });
-
-  fs.writeFileSync(
-    path.join(modelDir, `${modelName.replace(/\s+/g, "-").toLowerCase()}.json`),
-    treeData,
-    "utf-8"
-  );
-
-  // Minimal ONNX metadata wrapper
-  const metadataProto = $onnx.ModelProto.create({
-    irVersion: 9,
-    producerName: "LSAR-ML",
-    producerVersion: "1.0",
-    docString: `Decision Tree: ${modelName}. Inference uses JS from companion .json file.`,
-    opsetImport: [
-      $onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
-    ],
-    graph: $onnx.GraphProto.create({
-      name: modelName,
-      node: [
-        $onnx.NodeProto.create({
-          output: ["Y"],
-          name: `${modelName}_constant`,
-          opType: "Constant",
-          attribute: [
-            $onnx.AttributeProto.create({
-              name: "value",
-              type: 4,
-              t: makeTensor("tree_ref", [treeData.length], [1]),
-            }),
-          ],
-        }),
-      ],
-      output: [makeValueInfo("Y", [1])],
-    }),
-  });
-
-  const buffer = $onnx.ModelProto.encode(metadataProto).finish() as Buffer;
-  const onnxPath = path.join(modelDir, `${modelName.replace(/\s+/g, "-").toLowerCase()}.onnx`);
-  fs.writeFileSync(onnxPath, Buffer.from(buffer));
-
-  return { filePath: onnxPath, modelType: "RISK_CLASSIFICATION", format: "onnx", metrics: { treeDepth: getTreeDepth(tree), nFeatures: featureNames.length } };
-}
-
-/**
  * Export K-Means centroids as a proper ONNX inference graph.
  *
  * Architecture (standard ONNX ops, no custom ops):
@@ -198,13 +142,15 @@ export function exportDecisionTreeOnnx(
  *   ReduceSum(squared, axis=1) → [n_clusters]
  *   ArgMin(distances, axis=0) → scalar (cluster ID)
  *   Output: cluster_id (int64)
+ *
+ * Valid ONNX computation graph.
  */
 export function exportKMeansOnnx(
   modelName: string,
   centroids: number[][],
   featureNames: string[]
 ): OnnxExportResult {
-  const modelDir = path.resolve(env.mlModelPath);
+  const modelDir = path.resolve(env.modelPath);
   if (!fs.existsSync(modelDir)) fs.mkdirSync(modelDir, { recursive: true });
 
   const nClusters = centroids.length;
@@ -223,7 +169,7 @@ export function exportKMeansOnnx(
 
   const modelProto = $onnx.ModelProto.create({
     irVersion: 9,
-    producerName: "LSAR-ML",
+    producerName: "LSAR-Analytics",
     docString: `K-Means Clustering: ${modelName}. ${nClusters} clusters, ${nFeatures} features.`,
     opsetImport: [
       $onnx.OperatorSetIdProto.create({ domain: "", version: 21 }),
@@ -231,60 +177,42 @@ export function exportKMeansOnnx(
     graph: $onnx.GraphProto.create({
       name: modelName,
       docString: `Nearest-centroid clustering with ${nClusters} clusters`,
-      // Input: X (1 x n_features) float32
       input: [makeValueInfo("X", [1, nFeatures])],
-      // Output: cluster_id scalar int64
       output: [makeValueInfo("cluster_id", [], 7)],
-      // Initializers
       initializer: [
-        // Centroids as float32 tensor [nClusters, nFeatures]
         makeTensor("centroids", flatCentroids, [nClusters, nFeatures], 1),
-        // Tile repeats as int64 [2]
         makeTensor("repeats", repeats, [2], 7),
-        // Pow exponent as float32 scalar
         makeTensor("pow_exp", [2], [1], 1),
-        // ReduceSum axes: [1] (sum across feature dimension) as int64
         makeTensor("sum_axes", [1], [1], 7),
-        // No need for separate argmin_axis — it's an attribute in opset 12+
       ],
-      // Computation graph
       node: [
-        // 1. Tile input to match centroid count
         $onnx.NodeProto.create({
           input: ["X", "repeats"],
           output: ["tiled"],
           name: `${modelName}_tile`,
           opType: "Tile",
         }),
-        // 2. Subtract centroids
         $onnx.NodeProto.create({
           input: ["tiled", "centroids"],
           output: ["diff"],
           name: `${modelName}_sub`,
           opType: "Sub",
         }),
-        // 3. Square differences
         $onnx.NodeProto.create({
           input: ["diff", "pow_exp"],
           output: ["squared"],
           name: `${modelName}_pow`,
           opType: "Pow",
         }),
-        // 4. Sum across features — axes is input Tensor in opset 18+
         $onnx.NodeProto.create({
           input: ["squared", "sum_axes"],
           output: ["distances"],
           name: `${modelName}_sum`,
           opType: "ReduceSum",
           attribute: [
-            $onnx.AttributeProto.create({
-              name: "keepdims",
-              type: 2, // INT
-              i: 0,
-            }),
+            $onnx.AttributeProto.create({ name: "keepdims", type: 2, i: 0 }),
           ],
         }),
-        // 5. Find nearest centroid — axis is an attribute in opset 12+
         $onnx.NodeProto.create({
           input: ["distances"],
           output: ["cluster_id"],
@@ -317,7 +245,7 @@ export function exportKMeansJson(
   centroids: number[][],
   featureNames: string[]
 ): OnnxExportResult {
-  const modelDir = path.resolve(env.mlModelPath);
+  const modelDir = path.resolve(env.modelPath);
   if (!fs.existsSync(modelDir)) fs.mkdirSync(modelDir, { recursive: true });
 
   const filePath = path.join(modelDir, `${modelName.replace(/\s+/g, "-").toLowerCase()}.json`);
@@ -333,12 +261,4 @@ export function exportKMeansJson(
     format: "json",
     metrics: { nClusters: centroids.length, dimensions: featureNames.length },
   };
-}
-
-function getTreeDepth(node: any): number {
-  if (!node || node.isLeaf) return 1;
-  return 1 + Math.max(
-    node.left ? getTreeDepth(node.left) : 0,
-    node.right ? getTreeDepth(node.right) : 0
-  );
 }

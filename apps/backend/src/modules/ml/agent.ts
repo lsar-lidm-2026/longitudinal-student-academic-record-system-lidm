@@ -1,7 +1,11 @@
 /**
- * LLM Agent for ML analysis.
- * Takes raw ML model outputs + student data → generates natural language analysis in Indonesian.
- * Falls back to plain ML output if LLM call fails (graceful degradation).
+ * LLM Agent for analytics explanations.
+ * Takes raw analytics data → generates natural language explanations in Indonesian.
+ * Falls back to template text if LLM call fails (graceful degradation).
+ *
+ * This is a VALID use of LLM — generating human-readable explanations from structured data.
+ * What we DON'T do: ask the LLM to evaluate our models, fabricate confidence, or pretend
+ * this is "AI-powered ML."
  */
 
 import { generateChatCompletion } from "../ai/llm.client";
@@ -19,8 +23,8 @@ interface StudentSummary {
 
 interface RiskPrediction {
   level: string;
-  confidence: number;
   factors: string[];
+  score: number;
 }
 
 interface TrendPrediction {
@@ -38,7 +42,6 @@ interface ClusterInfo {
 
 /**
  * Generate risk analysis using LLM Agent.
- * Falls back to structured output if LLM fails.
  */
 export async function analyzeRisk(
   student: StudentSummary,
@@ -55,9 +58,8 @@ Data Siswa:
 - Total ketidakhadiran: ${student.totalAbsence}
 - Jumlah prestasi: ${student.achievementCount}
 
-Hasil Analisis Model:
+Hasil Analisis Risiko:
 - Level Risiko: ${risk.level}
-- Confidence: ${(risk.confidence * 100).toFixed(0)}%
 - Faktor kontribusi: ${risk.factors.join(", ")}
 
 Beri output dalam format:
@@ -76,7 +78,7 @@ Beri output dalam format:
       { role: "user", content: prompt },
     ]);
 
-    // Parse the response — handle multiple possible formats
+    // Parse the response
     const sections = content.split(/\*{0,2}Rekomendasi\*{0,2}\s*:?\s*/i);
     let explanation = sections[0] || content;
     explanation = explanation.replace(/\*{0,2}Analisis\*{0,2}\s*:?\s*/i, "").trim();
@@ -92,9 +94,8 @@ Beri output dalam format:
       recommendations: recommendations.length > 0 ? recommendations : risk.factors,
     };
   } catch {
-    // Fallback: structured output without LLM
     return {
-      explanation: `Berdasarkan analisis data, siswa ${student.name} berada pada level ${risk.level} dengan confidence ${(risk.confidence * 100).toFixed(0)}%. Faktor utama: ${risk.factors.join(", ")}.`,
+      explanation: `Berdasarkan data, siswa ${student.name} berada pada level ${risk.level}. Faktor utama: ${risk.factors.join(", ")}.`,
       recommendations: risk.factors,
     };
   }
@@ -119,7 +120,7 @@ export async function analyzeTrend(
 - Rata-rata nilai sekarang: ${student.avgKnowledge.toFixed(1)}
 - Tren: ${directionLabel} (slope: ${trend.slope.toFixed(2)})
 - Prediksi nilai semester depan: ${trend.nextPrediction.toFixed(1)}
-- Akurasi model: ${(trend.rSquared * 100).toFixed(0)}%
+- Kualitas model (R²): ${(trend.rSquared * 100).toFixed(0)}%
 
 Berikan analisis singkat dalam 2-3 kalimat tentang tren akademik siswa ini dalam Bahasa Indonesia.`;
 
@@ -141,7 +142,7 @@ Berikan analisis singkat dalam 2-3 kalimat tentang tren akademik siswa ini dalam
           ? "turun"
           : "stabil";
     return {
-      explanation: `Tren akademik ${student.name} cenderung ${dir} dengan prediksi nilai semester depan sekitar ${trend.nextPrediction.toFixed(0)}. Akurasi prediksi: ${(trend.rSquared * 100).toFixed(0)}%.`,
+      explanation: `Tren akademik ${student.name} cenderung ${dir} dengan prediksi nilai semester depan sekitar ${trend.nextPrediction.toFixed(0)}.`,
     };
   }
 }

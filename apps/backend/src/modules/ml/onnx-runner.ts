@@ -1,6 +1,9 @@
 /**
  * ONNX Runtime Adapter — loads trained ONNX models and runs inference.
  * Falls back gracefully to JS-based inference when ONNX is unavailable.
+ *
+ * Validates that ONNX files are genuine protobuf before attempting inference.
+ * The decision tree "ONNX" export that was a JSON-in-disguise will be rejected.
  */
 
 import { env } from "../../config/env";
@@ -18,8 +21,25 @@ try {
 const sessionCache = new Map<string, any>();
 
 /**
+ * Quick check: is this file actually a protobuf, not a JSON file?
+ * Reads first byte — protobuf starts with a field tag byte (0x08-0x0F typically),
+ * not '{' or '"'.
+ */
+function isLikelyProtobuf(filePath: string): boolean {
+  try {
+    const buf = Buffer.alloc(1);
+    const fd = fs.openSync(filePath, "r");
+    fs.readSync(fd, buf, 0, 1, 0);
+    fs.closeSync(fd);
+    const firstByte = buf.toString("utf-8");
+    return firstByte !== "{" && firstByte !== '"';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run inference through ONNX Runtime.
- * Tries model files from mlModel DB records, falls back to JS inference.
  */
 export async function runOnnxInference(
   filePath: string | null | undefined,
@@ -28,9 +48,17 @@ export async function runOnnxInference(
   if (!ort || !filePath) return null;
 
   try {
-    // Resolve absolute path
-    const modelPath = path.isAbsolute(filePath) ? filePath : path.resolve(env.mlModelPath, filePath);
-    if (!fs.existsSync(modelPath)) return null;
+    const modelPath = path.isAbsolute(filePath) ? filePath : path.resolve(env.modelPath, filePath);
+    if (!fs.existsSync(modelPath)) {
+      console.warn(`[ONNX] Model file not found: ${modelPath}`);
+      return null;
+    }
+
+    // Reject non-protobuf files (catches JSON-disguised-as-ONNX)
+    if (!isLikelyProtobuf(modelPath)) {
+      console.warn(`[ONNX] File is not a valid protobuf (looks like JSON): ${modelPath}`);
+      return null;
+    }
 
     // Get or create cached session
     let session = sessionCache.get(modelPath);

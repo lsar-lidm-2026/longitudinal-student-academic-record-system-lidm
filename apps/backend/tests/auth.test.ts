@@ -20,7 +20,7 @@ describe("Auth Service", () => {
     });
 
     it("rejects duplicate username", async () => {
-      expect(createUser({ username: "testuser", password: "x", name: "x", role: "GURU" })).rejects.toThrow();
+      expect(createUser({ username: "testuser", password: "testpass", name: "x", role: "GURU" })).rejects.toThrow();
     });
 
     it("creates users with all roles", async () => {

@@ -1,10 +1,18 @@
 import { prisma } from "../../lib/prisma";
 import { NotFoundError } from "../../common/error";
 import { computeFeatures } from "./features";
-import { getModels as getTrainedModels, getStudentRegression, retrainModels as retrain } from "./trainer";
+import { getModels as getTrainedModels, retrainModels as retrain } from "./trainer";
+import { evaluateRisk } from "./scoring-engine";
 import { analyzeRisk, analyzeTrend, explainCluster } from "./agent";
-import { evaluateModel } from "./eval-agent";
+import {
+  analyzeFeatures,
+  analyzeRiskDistribution,
+  evaluateCluster,
+  evaluateTrends,
+  type EvaluationReport,
+} from "./model-evaluator";
 import { runOnnxInference, clearOnnxCache } from "./onnx-runner";
+import { trainLinearRegression } from "./models/linear-regression";
 import type { StudentFeatures } from "./features";
 import * as fs from "fs";
 
@@ -23,34 +31,26 @@ async function refreshOnnxPaths() {
       onnxPaths[m.modelType] = m.filePath;
     }
   }
-  // Clear ONNX Runtime session cache since models may have changed
   clearOnnxCache();
 }
 
-/**
- * Auto-generate ONNX files if they don't exist yet.
- * Called before any ML inference that needs ONNX.
- */
 async function ensureOnnxExists(): Promise<void> {
-  if (Object.keys(onnxPaths).length > 0) return; // Already have cached paths
+  if (Object.keys(onnxPaths).length > 0) return;
 
-  // Check DB for model records
   const records = await prisma.mlModel.findMany({
     where: { isActive: true },
     select: { id: true, modelType: true, filePath: true, trainedAt: true },
     orderBy: { trainedAt: "desc" },
   });
 
-  // If records exist but no valid file paths, or no records at all → retrain
   const needsRetrain = records.length === 0 || records.some((r) => !r.filePath || !fs.existsSync(r.filePath));
   if (needsRetrain) {
     try {
-      console.log("[ML] ONNX files missing — auto-regenerating...");
+      console.log("[Analytics] ONNX files missing — regenerating K-Means model...");
       await retrain();
       await refreshOnnxPaths();
-      console.log("[ML] ONNX files generated");
     } catch (err: any) {
-      console.warn(`[ML] Auto-generation failed: ${err.message}`);
+      console.warn(`[Analytics] Auto-generation failed: ${err.message}`);
     }
   } else {
     await refreshOnnxPaths();
@@ -58,7 +58,7 @@ async function ensureOnnxExists(): Promise<void> {
 }
 
 // ============================================================
-// Risk Classification — uses Decision Tree
+// Risk Assessment — uses transparent rule-based ScoringEngine
 // ============================================================
 
 function factorsFromFeatures(features: StudentFeatures): string[] {
@@ -67,8 +67,7 @@ function factorsFromFeatures(features: StudentFeatures): string[] {
   if (features.scoreVolatility > 15) factors.push(`Nilai tidak stabil (volatilitas ${features.scoreVolatility.toFixed(0)})`);
   if (features.semesterCount >= 2 && features.scoreDelta < -10) factors.push(`Nilai turun ${Math.abs(features.scoreDelta).toFixed(0)} poin`);
   const avgAbsence = features.semesterCount > 0 ? features.totalAbsence / features.semesterCount : 0;
-  if (avgAbsence > 5) factors.push(`Rata-rata ketidakhadiran ${avgAbsence.toFixed(0)}/semester`);
-  if (features.absenceTrend > 2) factors.push("Tren alpha meningkat");
+  if (avgAbsence > 5) factors.push(`Rata-rata ketidakhadiran ${avgAbsence.toFixed(0)} hari/semester`);
   if (features.semesterCount >= 2 && features.achievementCount === 0) factors.push("Belum ada prestasi akademik/non-akademik");
   return factors.length > 0 ? factors : ["Tidak ada faktor risiko signifikan"];
 }
@@ -81,80 +80,61 @@ export async function getStudentRisk(studentId: string) {
   if (!student) throw new NotFoundError("Student not found");
 
   const features = await computeFeatures(studentId);
-
-  // Ensure models are trained
-  const models = await getTrainedModels();
-
-  // 1. Risk prediction — try ONNX Runtime first, fall back to Decision Tree
-  let riskLevel: string;
-  let riskConfidence: number;
-
-  // Auto-generate ONNX if not exist
-  if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
-
-  // Try ONNX Runtime inference
-  const onnxResult = await runOnnxInference(onnxPaths["RISK_CLASSIFICATION"], [
-    features.avgKnowledge,
-    features.scoreVolatility,
-    features.totalAbsence,
-    features.scoreDelta,
-    features.achievementCount,
-  ]);
-
-  if (onnxResult && onnxResult.length > 0) {
-    // ONNX model returns class index: 0=AMAN, 1=WASPADA, 2=KRITIS
-    const classLabels = ["AMAN", "WASPADA", "KRITIS"];
-    const idx = Math.round(onnxResult[0]);
-    riskLevel = classLabels[Math.max(0, Math.min(idx, classLabels.length - 1))];
-    riskConfidence = 0.8;
-  } else if (models.riskTree) {
-    // Fallback: Decision Tree inference
-    const prediction = models.riskTree.predict([
-      features.avgKnowledge,
-      features.scoreVolatility,
-      features.totalAbsence,
-      features.scoreDelta,
-      features.achievementCount,
-    ]);
-    riskLevel = prediction.label;
-    riskConfidence = prediction.confidence;
-  } else {
-    // Hard fallback
-    riskLevel = features.avgKnowledge < 70 ? "WASPADA" : "AMAN";
-    riskConfidence = 0.5;
-  }
-
   const factors = factorsFromFeatures(features);
 
-  // 2. LLM Agent analysis
-  const agentResult = await analyzeRisk(
-    {
-      name: student.name,
-      className: student.class?.name,
-      avgKnowledge: features.avgKnowledge,
-      scoreVolatility: features.scoreVolatility,
-      scoreDelta: features.scoreDelta,
-      totalAbsence: features.totalAbsence,
-      achievementCount: features.achievementCount,
-      semesterCount: features.semesterCount,
-    },
-    { level: riskLevel, confidence: riskConfidence, factors }
-  );
+  // Rule-based risk scoring — transparent, documented, no fake confidence
+  const risk = evaluateRisk({
+    avgKnowledge: features.avgKnowledge,
+    scoreVolatility: features.scoreVolatility,
+    totalAbsence: features.totalAbsence,
+    scoreDelta: features.scoreDelta,
+    semesterCount: features.semesterCount,
+    achievementCount: features.achievementCount,
+    avgAbsencePerSemester: features.semesterCount > 0 ? features.totalAbsence / features.semesterCount : 0,
+  });
 
-  // Derive risk score from confidence + severity
-  const baseScore = riskLevel === "KRITIS" ? 70 : riskLevel === "WASPADA" ? 35 : 10;
-  const score = Math.min(100, baseScore + Math.round((1 - riskConfidence) * 15));
+  // LLM Agent explanation (optional enhancement, falls back gracefully)
+  let agentResult = { explanation: "", recommendations: [] as string[] };
+  try {
+    agentResult = await analyzeRisk(
+      {
+        name: student.name,
+        className: student.class?.name,
+        avgKnowledge: features.avgKnowledge,
+        scoreVolatility: features.scoreVolatility,
+        scoreDelta: features.scoreDelta,
+        totalAbsence: features.totalAbsence,
+        achievementCount: features.achievementCount,
+        semesterCount: features.semesterCount,
+      },
+      {
+        level: risk.level,
+        factors: risk.factors.map((f) => f.detail),
+        score: risk.score,
+      }
+    );
+  } catch (err: any) {
+    console.warn(`[Analytics] LLM risk analysis failed for ${studentId}: ${err.message}`);
+  }
 
-  const risk = {
-    level: riskLevel as "AMAN" | "WASPADA" | "KRITIS",
-    score,
-    confidence: riskConfidence,
-    factors,
-    recommendations: agentResult.recommendations,
+  const result = {
+    level: risk.level,
+    score: risk.score,
+    factors: risk.factors.map((f) => f.detail),
+    recommendations: agentResult.recommendations.length > 0
+      ? agentResult.recommendations
+      : risk.factors.map((f) =>
+          f.name === "LOW_KNOWLEDGE" ? "Pertimbangkan program remedial atau bimbingan belajar tambahan" :
+          f.name === "HIGH_VOLATILITY" ? "Pantau konsistensi belajar dan identifikasi faktor pengganggu" :
+          f.name === "HIGH_ABSENCE" ? "Koordinasi dengan orang tua untuk meningkatkan kehadiran" :
+          f.name === "NEGATIVE_TREND" ? "Evaluasi metode belajar dan pertimbangkan intervensi dini" :
+          f.name === "NO_ACHIEVEMENT" ? "Dorong partisipasi dalam kegiatan akademik/non-akademik" :
+          "Pemantauan berkala disarankan"
+        ),
     aiExplanation: agentResult.explanation,
   };
 
-  // 3. Persist prediction
+  // Persist the assessment
   await prisma.predictedOutcome.upsert({
     where: {
       studentId_academicYearId_modelType_isActive: {
@@ -165,27 +145,27 @@ export async function getStudentRisk(studentId: string) {
       },
     },
     update: {
-      label: riskLevel,
+      label: risk.level,
       score: risk.score,
-      confidence: riskConfidence,
-      features: features as any,
+      confidence: 1, // deterministic rule-based, always 1
+      features: { factors: risk.factors } as any,
     },
     create: {
       studentId,
       academicYearId: features.academicYearId || null,
       modelType: "RISK_CLASSIFICATION",
-      label: riskLevel,
+      label: risk.level,
       score: risk.score,
-      confidence: riskConfidence,
-      features: features as any,
+      confidence: 1,
+      features: { factors: risk.factors } as any,
     },
   });
 
-  return { features, risk };
+  return { features, risk: result };
 }
 
 // ============================================================
-// Class Risk — analyzes all students in a class
+// Class Risk — assesses all students in a class
 // ============================================================
 
 export async function getClassRisk(classId: string) {
@@ -194,43 +174,41 @@ export async function getClassRisk(classId: string) {
     select: { id: true, name: true },
   });
 
-  const results = [];
+  const results: Array<{
+    studentId: string;
+    name: string;
+    risk: {
+      level: string;
+      score: number;
+      factors: string[];
+      recommendations: string[];
+    };
+    features: Record<string, number>;
+    trend: {
+      trend: "NAIK" | "STABIL" | "TURUN";
+      description: string;
+    };
+  }> = [];
 
   for (const student of students) {
     try {
       const features = await computeFeatures(student.id);
-      const models = await getTrainedModels();
-
-      const featureVec = [
-        features.avgKnowledge,
-        features.scoreVolatility,
-        features.totalAbsence,
-        features.scoreDelta,
-        features.achievementCount,
-      ];
-
-      let level: string;
-      let confidence: number;
-      if (models.riskTree) {
-        const pred = models.riskTree.predict(featureVec);
-        level = pred.label;
-        confidence = pred.confidence;
-      } else {
-        level = features.avgKnowledge < 70 ? "WASPADA" : "AMAN";
-        confidence = 0.5;
-      }
-
-      const baseScore = level === "KRITIS" ? 70 : level === "WASPADA" ? 35 : 10;
-      const score = Math.min(100, baseScore + Math.round((1 - confidence) * 15));
+      const risk = evaluateRisk({
+        avgKnowledge: features.avgKnowledge,
+        scoreVolatility: features.scoreVolatility,
+        totalAbsence: features.totalAbsence,
+        scoreDelta: features.scoreDelta,
+        semesterCount: features.semesterCount,
+        achievementCount: features.achievementCount,
+      });
 
       results.push({
         studentId: student.id,
         name: student.name,
         risk: {
-          level,
-          score,
-          confidence,
-          factors: factorsFromFeatures(features),
+          level: risk.level,
+          score: risk.score,
+          factors: risk.factors.map((f) => f.detail),
           recommendations: [],
         },
         features: {
@@ -252,8 +230,8 @@ export async function getClassRisk(classId: string) {
                 : "Nilai relatif stabil dibanding semester sebelumnya",
         },
       });
-    } catch {
-      // Skip students without records
+    } catch (err: any) {
+      console.warn(`[Analytics] Skipping student ${student.id}: ${err.message}`);
     }
   }
 
@@ -273,8 +251,35 @@ export async function getClassRisk(classId: string) {
 }
 
 // ============================================================
-// Trend Prediction — uses Linear Regression
+// Trend Prediction — uses Linear Regression with real R²
 // ============================================================
+
+/**
+ * Compute per-semester knowledge averages for trend analysis.
+ */
+async function getSemesterAverages(studentId: string): Promise<{
+  x: number[];
+  y: number[];
+  nPoints: number;
+}> {
+  const records = await prisma.semesterRecord.findMany({
+    where: { studentId },
+    include: { subjectScores: true },
+    orderBy: [{ academicYear: { year: "asc" } }, { semester: "asc" }],
+  });
+
+  const semAvgs = records.map((r) => {
+    const scores = r.subjectScores;
+    return scores.length > 0
+      ? scores.reduce((s, sc) => s + sc.knowledgeScore, 0) / scores.length
+      : 0;
+  });
+
+  const x = semAvgs.map((_, i) => i);
+  const y = semAvgs;
+
+  return { x, y, nPoints: semAvgs.length };
+}
 
 export async function getStudentTrend(studentId: string) {
   const student = await prisma.student.findUnique({
@@ -284,54 +289,44 @@ export async function getStudentTrend(studentId: string) {
   if (!student) throw new NotFoundError("Student not found");
 
   const features = await computeFeatures(studentId);
-  const nextSemesterIndex = features.semesterCount;
+  const { x, y, nPoints } = await getSemesterAverages(studentId);
+  const nextSemesterIndex = nPoints;
 
-  // Try ONNX Runtime for trend prediction
-  let nextPrediction = features.avgKnowledge;
-  let regressionSlope = 0;
-  let regressionRSquared = 0;
-
-  if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
-  const onnxResult = await runOnnxInference(onnxPaths["TREND_PREDICTION"], [nextSemesterIndex]);
-
-  if (onnxResult && onnxResult.length > 0) {
-    nextPrediction = Math.max(0, Math.min(100, onnxResult[0]));
-    // Approximate slope from prediction: delta from last known value
-    regressionSlope = nextPrediction - features.avgKnowledge;
-    regressionRSquared = 0.6; // Default — actual R² from training data
-  } else {
-    // Fallback: JS linear regression
-    const { regression, features: _f } = await getStudentRegression(studentId);
-    nextPrediction = regression.predict(nextSemesterIndex);
-    regressionSlope = regression.slope;
-    regressionRSquared = regression.rSquared;
-  }
+  // Linear Regression — computed on the fly, real R²
+  const regression = trainLinearRegression(x, y);
+  const nextPrediction = regression.predict(nextSemesterIndex);
 
   const direction: "NAIK" | "STABIL" | "TURUN" =
-    regressionSlope > 2 ? "NAIK" : regressionSlope < -2 ? "TURUN" : "STABIL";
+    regression.slope > 2 ? "NAIK" : regression.slope < -2 ? "TURUN" : "STABIL";
 
-  const agentResult = await analyzeTrend(
-    {
-      name: student.name,
-      avgKnowledge: features.avgKnowledge,
-      scoreVolatility: features.scoreVolatility,
-      scoreDelta: features.scoreDelta,
-      totalAbsence: features.totalAbsence,
-      achievementCount: features.achievementCount,
-      semesterCount: features.semesterCount,
-    },
-    {
-      slope: regressionSlope,
-      rSquared: regressionRSquared,
-      nextPrediction,
-      direction,
-    }
-  );
+  // LLM Agent explanation (graceful fallback)
+  let agentResult = { explanation: "" };
+  try {
+    agentResult = await analyzeTrend(
+      {
+        name: student.name,
+        avgKnowledge: features.avgKnowledge,
+        scoreVolatility: features.scoreVolatility,
+        scoreDelta: features.scoreDelta,
+        totalAbsence: features.totalAbsence,
+        achievementCount: features.achievementCount,
+        semesterCount: features.semesterCount,
+      },
+      {
+        slope: regression.slope,
+        rSquared: regression.rSquared,
+        nextPrediction,
+        direction,
+      }
+    );
+  } catch (err: any) {
+    console.warn(`[Analytics] LLM trend analysis failed for ${studentId}: ${err.message}`);
+  }
 
   const trend = {
     trend: direction,
-    slope: regressionSlope,
-    rSquared: regressionRSquared,
+    slope: regression.slope,
+    rSquared: regression.rSquared, // REAL R², bukan hardcoded
     nextPrediction: Math.round(nextPrediction * 100) / 100,
     description: agentResult.explanation,
   };
@@ -349,7 +344,7 @@ export async function getStudentTrend(studentId: string) {
       },
       update: {
         score: nextPrediction,
-        confidence: Math.max(0, regressionRSquared),
+        confidence: Math.max(0, regression.rSquared), // R² as confidence proxy
         features: features as any,
       },
       create: {
@@ -357,7 +352,7 @@ export async function getStudentTrend(studentId: string) {
         academicYearId: features.academicYearId,
         modelType: "TREND_PREDICTION",
         score: nextPrediction,
-        confidence: Math.max(0, regressionRSquared),
+        confidence: Math.max(0, regression.rSquared),
         features: features as any,
       },
     });
@@ -367,7 +362,7 @@ export async function getStudentTrend(studentId: string) {
 }
 
 // ============================================================
-// Behavior Clustering — uses K-Means
+// Behavior Clustering — uses K-Means (legitimate unsupervised learning)
 // ============================================================
 
 export async function getClassCluster(classId: string) {
@@ -387,7 +382,7 @@ export async function getClassCluster(classId: string) {
     clusterId: number;
   }> = [];
 
-  const clusterData: Record<number, { totalKnowledge: number; totalAbsence: number; count: number; label: string }> = {};
+  const clusterData: Record<number, { totalKnowledge: number; totalAbsence: number; count: number }> = {};
 
   // Auto-generate ONNX if not exist
   if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
@@ -403,13 +398,12 @@ export async function getClassCluster(classId: string) {
         Math.min(features.achievementCount / maxes[3], 1),
       ];
 
-      // Try ONNX Runtime for K-Means inference
+      // K-Means inference — ONNX Runtime or JS fallback
       let clusterId: number;
       const onnxCluster = await runOnnxInference(onnxPaths["BEHAVIOR_CLUSTER"], vec);
       if (onnxCluster && onnxCluster.length > 0) {
         clusterId = Math.round(onnxCluster[0]);
       } else {
-        // Fallback: JS nearest-centroid
         clusterId = models.clusterModel.predict(vec);
       }
 
@@ -420,13 +414,13 @@ export async function getClassCluster(classId: string) {
       });
 
       if (!clusterData[clusterId]) {
-        clusterData[clusterId] = { totalKnowledge: 0, totalAbsence: 0, count: 0, label: "" };
+        clusterData[clusterId] = { totalKnowledge: 0, totalAbsence: 0, count: 0 };
       }
       clusterData[clusterId].totalKnowledge += features.avgKnowledge;
       clusterData[clusterId].totalAbsence += features.totalAbsence;
       clusterData[clusterId].count++;
-    } catch {
-      // Skip
+    } catch (err: any) {
+      console.warn(`[Analytics] Skipping cluster assignment for student ${student.id}: ${err.message}`);
     }
   }
 
@@ -437,12 +431,22 @@ export async function getClassCluster(classId: string) {
     avgAbsence: Math.round((data.totalAbsence / data.count) * 100) / 100,
   }));
 
-  // LLM Agent explanation
-  const agentResult = await explainCluster(clusters);
+  // LLM Agent explanation for clusters (graceful fallback)
+  let profiles: Array<{ clusterId: number; label: string; description: string }> = [];
+  try {
+    const agentResult = await explainCluster(clusters);
+    profiles = agentResult.profiles;
+  } catch (err: any) {
+    console.warn(`[Analytics] LLM cluster explanation failed: ${err.message}`);
+    profiles = clusters.map((c) => ({
+      clusterId: c.clusterId,
+      label: `Kelompok ${c.clusterId + 1}`,
+      description: `${c.size} siswa dengan rata-rata nilai ${c.avgKnowledge.toFixed(0)}`,
+    }));
+  }
 
-  // Map cluster IDs to labels from agent
   const labelMap: Record<number, string> = {};
-  for (const profile of agentResult.profiles) {
+  for (const profile of profiles) {
     labelMap[profile.clusterId] = profile.label;
   }
 
@@ -452,7 +456,7 @@ export async function getClassCluster(classId: string) {
       ...a,
       clusterLabel: labelMap[a.clusterId] || `Kelompok ${a.clusterId + 1}`,
     })),
-    profiles: agentResult.profiles,
+    profiles,
   };
 }
 
@@ -464,67 +468,83 @@ export async function getModels() {
   const models = await getTrainedModels();
   return {
     trainedAt: models.trainedAt,
-    hasRiskTree: models.riskTree !== null,
     hasClusterModel: models.clusterModel !== null,
-    totalStudents: 0, // Filled by the caller if needed
+    meta: models.meta,
   };
 }
 
 export async function retrainModels() {
   const result = await retrain();
-  // Refresh ONNX path cache after retraining
   await refreshOnnxPaths();
   return result;
 }
 
-export async function evaluateAllModels() {
+export async function evaluateAllModels(): Promise<EvaluationReport> {
+  // Gather all students' features for evaluation
+  const students = await prisma.student.findMany({ select: { id: true } });
+  const allFeatures: StudentFeatures[] = [];
+
+  for (const student of students) {
+    try {
+      const features = await computeFeatures(student.id);
+      allFeatures.push(features);
+    } catch {
+      // skip — student without data doesn't add to evaluation
+    }
+  }
+
   const models = await getTrainedModels();
-  const evaluations: any[] = [];
 
-  // Count total students with features
-  const studentCount = await prisma.student.count();
+  // Feature analysis
+  const featureAnalysis = analyzeFeatures(allFeatures);
 
-  if (models.riskTree) {
-    const result = await evaluateModel({
-      type: "RISK_CLASSIFICATION",
-      name: "Decision Tree — Risk Classification",
-      metrics: { treeDepth: getTreeDepth(models.riskTree.tree) },
-      nSamples: studentCount,
-      nFeatures: models.riskTree.featureNames.length,
-      trainingDate: models.trainedAt?.toISOString() || "unknown",
-    });
-    evaluations.push({ modelType: "RISK_CLASSIFICATION", ...result });
+  // Risk distribution
+  const riskDistribution = analyzeRiskDistribution(allFeatures);
+
+  // Cluster evaluation
+  let clusterEvaluation = null;
+  if (models.clusterModel && allFeatures.length > 0) {
+    const maxes = [
+      Math.max(...allFeatures.map((f) => f.avgKnowledge), 100),
+      Math.max(...allFeatures.map((f) => f.avgSkills), 100),
+      Math.max(...allFeatures.map((f) => f.totalAbsence), 10),
+      Math.max(...allFeatures.map((f) => f.achievementCount), 5),
+    ];
+    const clusterVectors = allFeatures.map((f) => [
+      f.avgKnowledge / Math.max(maxes[0], 100),
+      f.avgSkills / Math.max(maxes[1], 100),
+      Math.min(f.avgSkills / Math.max(maxes[2], 10), 1),
+      Math.min(f.achievementCount / Math.max(maxes[3], 5), 1),
+    ]);
+    clusterEvaluation = evaluateCluster(clusterVectors, models.clusterModel);
   }
 
-  if (models.clusterModel) {
-    const result = await evaluateModel({
-      type: "BEHAVIOR_CLUSTER",
-      name: "K-Means — Behavior Clustering",
-      metrics: {
-        nClusters: models.clusterModel.centroids.length,
-        iterations: models.clusterModel.iterations,
-        inertia: Math.round(models.clusterModel.inertia * 100) / 100,
-      },
-      nSamples: studentCount,
-      nFeatures: 4,
-      trainingDate: models.trainedAt?.toISOString() || "unknown",
-    });
-    evaluations.push({ modelType: "BEHAVIOR_CLUSTER", ...result });
+  // Trend evaluation
+  const trendResults: Array<{ slope: number; rSquared: number; nPoints: number }> = [];
+  for (const f of allFeatures) {
+    try {
+      const { x, y, nPoints } = await getSemesterAverages(f.studentId);
+      if (nPoints >= 2) {
+        const reg = trainLinearRegression(x, y);
+        trendResults.push({ slope: reg.slope, rSquared: reg.rSquared, nPoints });
+      } else {
+        trendResults.push({ slope: 0, rSquared: 0, nPoints });
+      }
+    } catch {
+      trendResults.push({ slope: 0, rSquared: 0, nPoints: 0 });
+    }
   }
+  const trendEvaluation = evaluateTrends(trendResults);
 
   return {
-    trainedAt: models.trainedAt,
-    evaluations,
-    studentCount,
+    generatedAt: new Date().toISOString(),
+    nStudents: allFeatures.length,
+    dataQuality: featureAnalysis.dataQuality,
+    featureStats: featureAnalysis.features,
+    riskDistribution,
+    clusterEvaluation,
+    trendEvaluation,
   };
-}
-
-function getTreeDepth(node: any): number {
-  if (!node || node.isLeaf) return 1;
-  return 1 + Math.max(
-    node.left ? getTreeDepth(node.left) : 0,
-    node.right ? getTreeDepth(node.right) : 0
-  );
 }
 
 export async function getOutcomes(studentId?: string) {

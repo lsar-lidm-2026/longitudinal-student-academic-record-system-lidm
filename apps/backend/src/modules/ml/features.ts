@@ -1,15 +1,40 @@
 import { prisma } from "../../lib/prisma";
 
+/**
+ * Feature Vector — computed features for a single student.
+ *
+ * Feature Documentation:
+ * | Feature | Range | Description |
+ * |---------|-------|-------------|
+ * | avgKnowledge | 0-100 | Rata-rata nilai pengetahuan dari semua subject scores across all semesters |
+ * | avgSkills | 0-100 | Rata-rata nilai keterampilan dari semua subject scores across all semesters |
+ * | scoreVolatility | 0+ | Standar deviasi rata-rata nilai per semester — ukuran kestabilan performa |
+ * | scoreDelta | ±100 | Perubahan rata-rata nilai semester terakhir vs semester sebelumnya |
+ * | totalAbsence | 0+ | Total hari ketidakhadiran (sakit + izin + alpha) sepanjang riwayat |
+ * | absenceTrend | ±N | Perubahan jumlah alpha dari semester sebelumnya ke semester terakhir. **Caveat**: hanya berdasarkan 2 data points terakhir, minimal interpretasi |
+ * | achievementCount | 0+ | Total jumlah prestasi sepanjang riwayat |
+ * | semesterCount | 1+ | Jumlah semester dengan data yang tercatat |
+ */
+
 export interface StudentFeatures {
   studentId: string;
+  /** Rata-rata nilai pengetahuan (0-100) */
   avgKnowledge: number;
+  /** Rata-rata nilai keterampilan (0-100) */
   avgSkills: number;
+  /** Standar deviasi rata-rata nilai per semester — ukur kestabilan */
   scoreVolatility: number;
-  scoreDelta: number; // perubahan nilai semester terakhir
+  /** Perubahan nilai semester terakhir vs sebelumnya (+/-) */
+  scoreDelta: number;
+  /** Total hari ketidakhadiran sepanjang riwayat */
   totalAbsence: number;
+  /** Perubahan alpha dari semester sebelumnya ke terakhir (hanya 2 data points — interpret with caution) */
   absenceTrend: number;
+  /** Total jumlah prestasi */
   achievementCount: number;
+  /** Jumlah semester dengan data */
   semesterCount: number;
+  /** Academic year ID dari semester terakhir */
   academicYearId?: string;
 }
 
@@ -65,7 +90,7 @@ export async function computeFeatures(studentId: string): Promise<StudentFeature
     semesterAvgs.reduce((s, v) => s + (v - mean) ** 2, 0) / semesterAvgs.length;
   const scoreVolatility = Math.sqrt(variance);
 
-  // Delta nilai (perubahan semester terakhir)
+  // Delta nilai (perubahan semester terakhir vs sebelumnya)
   const scoreDelta =
     semesterAvgs.length >= 2
       ? semesterAvgs[semesterAvgs.length - 1] - semesterAvgs[semesterAvgs.length - 2]
@@ -77,6 +102,11 @@ export async function computeFeatures(studentId: string): Promise<StudentFeature
     (s, r) => s + r.attendance!.sick + r.attendance!.permission + r.attendance!.absent,
     0
   );
+
+  // Absence trend: perubahan alpha.
+  // CAVEAT: Hanya berdasarkan 2 data points terakhir.
+  // Untuk trend yang reliable, butuh minimal 3+ data points.
+  // Interpretasi: positif = alpha meningkat, negatif = alpha menurun.
   const absenceTrend =
     attendances.length >= 2
       ? (attendances[attendances.length - 1]!.attendance!.absent) -

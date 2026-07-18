@@ -20,6 +20,7 @@ import { aiSummaryController } from "./modules/ai/ai-summary.controller";
 import { mlController } from "./modules/ml/ml.controller";
 import { checkDbHealth } from "./lib/prisma";
 import { trainModels } from "./modules/ml/trainer";
+import { getModels } from "./modules/ml/ml.service";
 
 const app = new Elysia()
   .use(cors())
@@ -77,12 +78,20 @@ const app = new Elysia()
   })
   // Health check
   .get("/api/health", async () => {
-    const [db] = await Promise.all([checkDbHealth()]);
+    const [db, mlModels] = await Promise.all([
+      checkDbHealth(),
+      getModels().catch(() => ({ trainedAt: null, hasClusterModel: false, meta: null })),
+    ]);
     const allOk = db.ok;
     return success({
       status: allOk ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
       database: db,
+      analytics: {
+        trained: mlModels.trainedAt !== null,
+        hasClusterModel: mlModels.hasClusterModel,
+        trainedAt: mlModels.trainedAt?.toISOString() || null,
+      },
     });
   })
   // Routes
@@ -109,21 +118,29 @@ const app = new Elysia()
 console.log(`🦊 LSAR API running at http://localhost:${env.port}`);
 console.log(`📚 API docs at http://localhost:${env.port}/docs`);
 
-// Auto-train ML models on startup
-trainModels().then((m) => {
-  console.log(`🧠 ML models ready (trained at ${m.trainedAt?.toISOString()})`);
-}).catch((err) => {
-  console.warn(`⚠️  ML models not trained yet: ${err.message}`);
-});
+// Auto-train K-Means clustering model on startup
+// K-Means clustering — satu-satunya model yang beneran di-train
+if (env.clusteringEnabled) {
+  trainModels().then((m) => {
+    if (m.trainedAt) {
+      console.log(`🧠 K-Means clustering model ready (trained at ${m.trainedAt.toISOString()})`);
+    } else {
+      console.warn(`⚠️  Analytics model not trained — insufficient data`);
+    }
+  }).catch((err: any) => {
+    console.warn(`⚠️  Analytics model training failed: ${err.message}`);
+  });
 
-// Periodic retraining every 6 hours
-const RETRAIN_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
-setInterval(async () => {
-  console.log(`🔄 Scheduled ML retraining at ${new Date().toISOString()}`);
-  try {
-    const result = await trainModels();
-    console.log(`✅ ML models retrained at ${result.trainedAt?.toISOString()}`);
-  } catch (err: any) {
-    console.error(`❌ ML retraining failed: ${err.message}`);
-  }
-}, RETRAIN_INTERVAL_MS);
+  // Periodic retraining every N hours
+  setInterval(async () => {
+    console.log(`🔄 Scheduled K-Means retraining at ${new Date().toISOString()}`);
+    try {
+      const result = await trainModels();
+      if (result.trainedAt) {
+        console.log(`✅ K-Means retrained (${result.meta?.kmeansIterations} iterations, inertia: ${result.meta?.kmeansInertia})`);
+      }
+    } catch (err: any) {
+      console.error(`❌ Analytics retraining failed: ${err.message}`);
+    }
+  }, env.clusterRetrainIntervalMs);
+}
