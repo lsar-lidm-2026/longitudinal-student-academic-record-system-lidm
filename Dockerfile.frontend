@@ -1,14 +1,19 @@
 # ── Build Stage ───────────────────────────────────────────────────────
 FROM oven/bun:1 AS build
+
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+
 WORKDIR /app
 
-# Copy only frontend files (monorepo with own package.json + bun.lock)
-COPY apps/frontend/package.json apps/frontend/bun.lock ./
+# Copy ALL source files first (no node_modules — excluded by .dockerignore)
+COPY apps/frontend/ ./
+
+# Then install dependencies (package.json + bun.lock already inside apps/frontend/)
 RUN bun install --frozen-lockfile
 
-COPY apps/frontend/ ./
+# Build Next.js (standalone output)
 RUN bun run build
 
 # ── Runner Stage ─────────────────────────────────────────────────────

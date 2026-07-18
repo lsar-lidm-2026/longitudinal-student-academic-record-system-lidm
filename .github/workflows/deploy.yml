@@ -19,6 +19,7 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_TARGET_DIR: ${{ secrets.VPS_TARGET_DIR || '/root/lidm' }}
+          PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV }}
         run: |
           set -euo pipefail
 
@@ -33,7 +34,10 @@ jobs:
           # Ensure target dir exists
           ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "mkdir -p $VPS_TARGET_DIR"
 
-          # Send source to VPS via tar pipe
+          # Write .env to VPS
+          printf '%s\n' "$PRODUCTION_ENV" | ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cat > $VPS_TARGET_DIR/.env"
+
+          # Send source to VPS via tar pipe (exclude node_modules, .git, .next)
           tar cz \
             --exclude=node_modules \
             --exclude=.git \
@@ -42,23 +46,8 @@ jobs:
             docker-compose.yml \
             Dockerfile.frontend \
             Dockerfile.backend \
-            apps/backend/package.json \
-            apps/backend/bun.lock \
-            apps/backend/tsconfig.json \
-            apps/backend/prisma/ \
-            apps/backend/src/ \
-            apps/frontend/package.json \
-            apps/frontend/bun.lock \
-            apps/frontend/next.config.ts \
-            apps/frontend/tsconfig.json \
-            apps/frontend/public/ \
-            apps/frontend/app/ \
-            apps/frontend/components/ \
-            apps/frontend/lib/ \
-            apps/frontend/hooks/ \
-            apps/frontend/types/ \
-            apps/frontend/middleware.ts \
+            apps/ \
           | ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cd $VPS_TARGET_DIR && tar xz"
 
-          # Run deploy script on VPS
+          # Build and deploy on VPS
           ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cd $VPS_TARGET_DIR && bash deploy.sh"

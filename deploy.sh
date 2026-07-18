@@ -1,13 +1,17 @@
 #!/bin/bash
 # ── LSAR Deploy Script ──────────────────────────────────────────────
 # Called by CI/CD after source is synced to VPS.
-# Builds Docker images and restarts containers.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 echo "🚀 LSAR Deploy"
 echo "=============="
+
+# Source .env if it exists (for build args)
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
 
 # Create shared network if not exists
 docker network inspect app-shared-net >/dev/null 2>&1 || docker network create app-shared-net
