@@ -40,15 +40,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Make package public
-        run: |
-          PACKAGE_NAME="${{ github.event.repository.name }}/${{ matrix.service }}"
-          curl -sL -X PATCH \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME//\//%2F}/visibility" \
-            -d '{"visibility":"public"}' \
-            -o /dev/null -w "%{http_code}"
+
 
   deploy:
     name: Deploy to VPS
@@ -86,9 +78,10 @@ jobs:
           # Write .env
           printf '%s\n' "$PRODUCTION_ENV" | ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cat > $VPS_TARGET_DIR/.env"
 
-          # Pull tagged images (packages now public) and restart
+          # Login GHCR on VPS, pull tagged images, restart
           ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" \
-            "cd $VPS_TARGET_DIR && \
+            "echo ${GH_PAT} | docker login ghcr.io -u $VPS_USER --password-stdin && \
+             cd $VPS_TARGET_DIR && \
              export FRONTEND_TAG=${SHA_TAG} BACKEND_TAG=${SHA_TAG} && \
              docker compose pull && \
              docker compose up -d --remove-orphans && \
