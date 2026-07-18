@@ -46,6 +46,9 @@ export async function create(data: {
   gender: string;
   classId: string;
 }) {
+  const classExists = await prisma.class.findUnique({ where: { id: data.classId } });
+  if (!classExists) throw new NotFoundError("Class not found");
+
   const existingNis = await prisma.student.findUnique({ where: { nis: data.nis } });
   if (existingNis) throw new ConflictError("NIS already exists");
 
@@ -60,5 +63,9 @@ export async function update(
   data: { nis?: string; nisn?: string; name?: string; gender?: string; classId?: string }
 ) {
   await getById(id);
+  if (data.classId) {
+    const classExists = await prisma.class.findUnique({ where: { id: data.classId } });
+    if (!classExists) throw new NotFoundError("Class not found");
+  }
   return prisma.student.update({ where: { id }, data });
 }

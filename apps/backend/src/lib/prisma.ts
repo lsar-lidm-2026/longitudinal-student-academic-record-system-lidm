@@ -1,41 +1,55 @@
+import "../config/load-env";
+
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
+function createAdapter(url: string) {
+  const protocol = new URL(url).protocol.replace(":", "");
+
+  if (protocol === "postgres" || protocol === "postgresql") {
+    const poolConfig: pg.PoolConfig = {
+      connectionString: url,
+      // Pool kecil — pooling di-handle PgBouncer di server
+      max: 5,
+      // Tutup koneksi idle setelah 1 menit
+      idleTimeoutMillis: 60000,
+      // Gagal cepat kalau PgBouncer unreachable
+      connectionTimeoutMillis: 15000,
+      // TCP keepalive biar koneksi Tailscale nggak putus
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+      // Biarin proses exit kalau lagi idle
+      allowExitOnIdle: true,
+      // Recycle koneksi setelah 10000 kali query (cegah memory leak)
+      maxUses: 10000,
+    };
+
+    return new PrismaPg(poolConfig, {
+      schema: "public",
+      // Log & recover dari pool-level errors
+      onPoolError: (err) => {
+        console.error("[DB] Pool error:", err.message);
+      },
+      onConnectionError: (err) => {
+        console.error("[DB] Connection error:", err.message);
+      },
+    });
+  }
+
+  throw new Error(`Unsupported DATABASE_URL protocol: ${protocol}`);
+}
+
 export function createPrismaClient() {
-  const url = process.env.DATABASE_URL!;
+  const url = Bun.env.DATABASE_URL || process.env.DATABASE_URL;
 
-  const poolConfig: pg.PoolConfig = {
-    connectionString: url,
-    // Pool kecil — pooling di-handle PgBouncer di server
-    max: 5,
-    // Tutup koneksi idle setelah 1 menit
-    idleTimeoutMillis: 60000,
-    // Gagal cepat kalau PgBouncer unreachable
-    connectionTimeoutMillis: 5000,
-    // TCP keepalive biar koneksi Tailscale nggak putus
-    keepAlive: true,
-    keepAliveInitialDelayMillis: 10000,
-    // Biarin proses exit kalau lagi idle
-    allowExitOnIdle: true,
-    // Recycle koneksi setelah 10000 kali query (cegah memory leak)
-    maxUses: 10000,
-  };
+  if (!url) {
+    throw new Error("DATABASE_URL is required to initialize Prisma");
+  }
 
-  const adapter = new PrismaPg(poolConfig, {
-    schema: "public",
-    // Log & recover dari pool-level errors
-    onPoolError: (err) => {
-      console.error("[DB] Pool error:", err.message);
-    },
-    onConnectionError: (err) => {
-      console.error("[DB] Connection error:", err.message);
-    },
-  });
-
-  return new PrismaClient({ adapter }) as PrismaClient;
+  return new PrismaClient({ adapter: createAdapter(url) }) as PrismaClient;
 }
 
 export const prisma =

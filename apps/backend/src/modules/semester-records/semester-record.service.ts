@@ -7,6 +7,9 @@ export async function create(data: {
   semester: number;
   createdById: string;
 }) {
+  const studentExists = await prisma.student.findUnique({ where: { id: data.studentId } });
+  if (!studentExists) throw new NotFoundError("Student not found");
+
   // Check for duplicate
   const existing = await prisma.semesterRecord.findUnique({
     where: {
@@ -87,5 +90,12 @@ export async function listByStudent(studentId: string) {
 
 export async function deleteRecord(id: string) {
   await getById(id);
-  return prisma.semesterRecord.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.subjectScore.deleteMany({ where: { semesterRecordId: id } }),
+    prisma.attendance.deleteMany({ where: { semesterRecordId: id } }),
+    prisma.achievement.deleteMany({ where: { semesterRecordId: id } }),
+    prisma.healthRecord.deleteMany({ where: { semesterRecordId: id } }),
+    prisma.aiSummary.deleteMany({ where: { semesterRecordId: id } }),
+    prisma.semesterRecord.delete({ where: { id } }),
+  ]);
 }

@@ -1,3 +1,5 @@
+import "./load-env";
+
 export const env = {
   port: parseInt(Bun.env.PORT || "3001", 10),
   databaseUrl: Bun.env.DATABASE_URL || "",
