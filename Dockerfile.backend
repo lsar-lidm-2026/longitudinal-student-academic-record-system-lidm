@@ -2,14 +2,12 @@
 FROM oven/bun:1 AS build
 WORKDIR /app
 
-# Cache dependencies (monorepo with root bun.lock)
-COPY bun.lock package.json ./
-COPY apps/backend/package.json ./apps/backend/
-RUN bun install --frozen-lockfile --cwd apps/backend
+# Copy only backend files (monorepo with own package.json + bun.lock)
+COPY apps/backend/package.json apps/backend/bun.lock ./
+RUN bun install --frozen-lockfile
 
-# Generate Prisma client
-COPY apps/backend/prisma/ ./apps/backend/prisma/
-RUN bunx --cwd apps/backend prisma generate
+COPY apps/backend/ ./
+RUN bunx prisma generate
 
 # ── Runner Stage ─────────────────────────────────────────────────────
 FROM oven/bun:1-slim
@@ -18,12 +16,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV MODEL_PATH=/tmp/models
 
-# Copy installed deps + generated prisma
-COPY --from=build /app/apps/backend/node_modules ./node_modules
-COPY --from=build /app/apps/backend/src/generated ./src/generated
+COPY --from=build /app/src/generated ./src/generated
+COPY --from=build /app/node_modules ./node_modules
 COPY apps/backend/src ./src
 COPY apps/backend/package.json ./
 
 EXPOSE 3001
-
 CMD ["bun", "run", "src/index.ts"]
