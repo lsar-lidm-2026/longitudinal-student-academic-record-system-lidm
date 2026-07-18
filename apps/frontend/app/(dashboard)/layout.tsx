@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Toaster } from "sonner";
 import { Sidebar } from "../../components/layout/Sidebar";
+import { TopHeader } from "../../components/layout/TopHeader";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { ChatBot } from "../../components/chatbot/ChatBot";
 import { api } from "../../lib/api";
@@ -67,12 +68,17 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden bg-gray-50/50">
       <Toaster richColors position="top-right" />
       <Sidebar role={user.role} userName={user.name} onLogout={handleLogout} />
-      <main className="flex-1 p-6 overflow-auto">
-        <ErrorBoundary>{children}</ErrorBoundary>
-      </main>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <TopHeader user={user} />
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-7xl mx-auto w-full p-6">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </div>
+        </main>
+      </div>
       <ChatBot />
     </div>
   );

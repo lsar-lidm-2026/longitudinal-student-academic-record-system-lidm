@@ -162,3 +162,38 @@
     @apply font-sans;
     }
 }
+
+@media print {
+  /* Sembunyikan sidebar, navbar header, tombol aksi, breadcrumb, dan chatbot */
+  aside,
+  header,
+  nav,
+  button,
+  .no-print,
+  #chatbot-trigger,
+  .chatbot-container,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* Reset margin dan padding konten utama */
+  body, html {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hilangkan bayangan box shadow untuk cetak bersih */
+  .border {
+    border-color: #d1d5db !important;
+  }
+  
+  .shadow-sm, .shadow, .shadow-md, .shadow-lg {
+    box-shadow: none !important;
+  }
+}

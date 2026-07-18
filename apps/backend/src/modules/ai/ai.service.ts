@@ -29,6 +29,75 @@ async function getStudentAcademicData(studentId: string) {
   return { student, semesterRecords };
 }
 
+// ── Smart local fallbacks in case LLM is not configured/fails ─────────
+
+function generateMockStudentSummary(data: any): string {
+  const avg = Math.round(
+    data.subjectScores.reduce((sum: number, s: any) => sum + s.knowledgeScore, 0) /
+      data.subjectScores.length
+  );
+  const attendance = data.attendance;
+  const abs = attendance ? attendance.sick + attendance.permission + attendance.absent : 0;
+
+  let p1 = `${data.name} menunjukkan perkembangan akademik yang `;
+  if (avg >= 85) {
+    p1 += "sangat baik sepanjang semester ini. Ia aktif berpartisipasi di kelas dan menguasai hampir seluruh materi pelajaran dengan sangat memuaskan.";
+  } else if (avg >= 75) {
+    p1 += "cukup baik dan stabil. Sebagian besar standar kompetensi minimal telah tercapai dengan baik, meskipun masih ada ruang untuk peningkatan.";
+  } else {
+    p1 += "memerlukan perhatian dan bimbingan tambahan. Beberapa nilai mata pelajaran masih berada di bawah KKM, sehingga diperlukan perhatian ekstra di semester berikutnya.";
+  }
+
+  let p2 = ` Rata-rata nilai pengetahuan semester ini adalah ${avg}.`;
+  if (data.achievements && data.achievements.length > 0) {
+    p2 += ` Selain itu, siswa juga menorehkan prestasi dalam bidang "${data.achievements[0].title}" (${data.achievements[0].type}).`;
+  }
+
+  let p3 = "";
+  if (abs > 5) {
+    p3 = ` Catatan khusus: Kehadiran siswa perlu diperbaiki karena tercatat absen sebanyak ${abs} hari, yang sedikit mempengaruhi konsistensi belajarnya.`;
+  } else {
+    p3 = " Kedisiplinan dan kehadiran siswa sangat baik, dukung terus motivasi belajarnya di rumah.";
+  }
+
+  return p1 + p2 + p3 + "\n\n*(Catatan: Narasi dihasilkan oleh asisten analisis lokal LSAR)*";
+}
+
+function generateMockDraftDescription(data: any): string {
+  const intro = `Rekomendasi kompetensi hasil belajar untuk ${data.name} (Semester ${data.semester}, TA ${data.academicYear}):\n\n`;
+  const items = data.subjectScores.map((s: any) => {
+    let desc = "";
+    if (s.knowledgeScore >= 88) {
+      desc = `Sangat menonjol dalam menguasai seluruh materi dan kompetensi dasar ${s.subjectName}.`;
+    } else if (s.knowledgeScore >= 75) {
+      desc = `Menunjukkan pemahaman yang baik dan mampu menyelesaikan tugas-tugas ${s.subjectName} dengan teratur.`;
+    } else {
+      desc = `Perlu bimbingan intensif dan latihan berkala untuk memahami materi dasar ${s.subjectName}.`;
+    }
+    return `- **${s.subjectName}**: ${desc}`;
+  }).join("\n");
+  
+  return intro + items + "\n\n*(Catatan: Rekomendasi kompetensi dihasilkan oleh asisten analisis lokal LSAR)*";
+}
+
+function generateMockTransitionSummary(allData: any[]): string {
+  if (allData.length === 0) return "Tidak ada data riwayat akademik untuk evaluasi serah terima.";
+  const name = allData[0].name;
+  const lastSem = allData[allData.length - 1];
+  const avg = Math.round(
+    lastSem.subjectScores.reduce((sum: number, s: any) => sum + s.knowledgeScore, 0) /
+      lastSem.subjectScores.length
+  );
+
+  return `Catatan Serah Terima (Wali Kelas) untuk ${name}:\n\n` +
+    `1. **Perkembangan Umum**: Siswa menyelesaikan jenjang kelas dengan rata-rata akhir ${avg}.\n` +
+    `2. **Kekuatan Akademik**: Menunjukkan bakat dan minat yang stabil pada beberapa mata pelajaran utama.\n` +
+    `3. **Rekomendasi untuk Wali Kelas Berikutnya**: Pertahankan motivasi belajar siswa dan berikan pendampingan berkelanjutan agar konsistensi belajarnya tetap terjaga.\n\n` +
+    `*(Catatan: Rangkuman transisi dihasilkan oleh asisten analisis lokal LSAR)*`;
+}
+
+// ── Controller Methods ───────────────────────────────────────────────
+
 export async function generateStudentSummary(studentId: string) {
   const { student, semesterRecords } = await getStudentAcademicData(studentId);
   const latest = semesterRecords[semesterRecords.length - 1];
@@ -51,10 +120,16 @@ export async function generateStudentSummary(studentId: string) {
   };
 
   const prompt = buildStudentSummaryPrompt(data);
-  const content = await generateChatCompletion([
-    { role: "system", content: "Anda adalah asisten administrasi pendidikan SD." },
-    { role: "user", content: prompt },
-  ]);
+  let content: string;
+  try {
+    content = await generateChatCompletion([
+      { role: "system", content: "Anda adalah asisten administrasi pendidikan SD." },
+      { role: "user", content: prompt },
+    ]);
+  } catch (err) {
+    console.warn(`[AI] LLM Call failed for ${student.name}, using local fallback:`, err);
+    content = generateMockStudentSummary(data);
+  }
 
   // Atomic version increment — prevents race conditions
   return prisma.$transaction(async (tx) => {
@@ -98,10 +173,16 @@ export async function generateDraftDescription(studentId: string) {
   };
 
   const prompt = buildDraftDescriptionPrompt(data);
-  const content = await generateChatCompletion([
-    { role: "system", content: "Anda adalah asisten guru SD." },
-    { role: "user", content: prompt },
-  ]);
+  let content: string;
+  try {
+    content = await generateChatCompletion([
+      { role: "system", content: "Anda adalah asisten guru SD." },
+      { role: "user", content: prompt },
+    ]);
+  } catch (err) {
+    console.warn(`[AI] LLM Call failed for ${student.name}, using local fallback:`, err);
+    content = generateMockDraftDescription(data);
+  }
 
   // Atomic version increment
   return prisma.$transaction(async (tx) => {
@@ -147,10 +228,16 @@ async function generateSingleTransitionSummary(studentId: string) {
   }));
 
   const prompt = buildTransitionSummaryPrompt(allData);
-  const content = await generateChatCompletion([
-    { role: "system", content: "Anda adalah asisten serah terima wali kelas SD." },
-    { role: "user", content: prompt },
-  ]);
+  let content: string;
+  try {
+    content = await generateChatCompletion([
+      { role: "system", content: "Anda adalah asisten serah terima wali kelas SD." },
+      { role: "user", content: prompt },
+    ]);
+  } catch (err) {
+    console.warn(`[AI] LLM Call failed for ${s.name}, using local fallback:`, err);
+    content = generateMockTransitionSummary(allData);
+  }
 
   const latestRecord = semesterRecords[semesterRecords.length - 1];
 

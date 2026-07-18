@@ -38,7 +38,7 @@ async function main() {
   // Connect to port 5432 directly (bypass PgBouncer) for TRUNCATE
   const adminClient = new pg.Client({ connectionString: process.env.DATABASE_URL!.replace(':6432/', ':5432/') });
   await adminClient.connect();
-  await adminClient.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid()");
+  // await adminClient.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid()");
   // Delete in FK-safe order (leaf tables first)
   for (const t of ['predicted_outcome','ai_summary','achievement','health_record','attendance','subject_score','semester_record','class_audit_log','student','class','ml_model','academic_year','"user"'])
     await adminClient.query(`DELETE FROM ${t}`);

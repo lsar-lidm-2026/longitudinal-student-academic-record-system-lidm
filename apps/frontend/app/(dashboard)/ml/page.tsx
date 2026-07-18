@@ -63,7 +63,7 @@ export default function MLDashboardPage() {
 
   return (
     <AuthGuard roles={["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH"]}>
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={8} />
         <div className="relative p-6 bg-gradient-to-br from-white via-fuchsia-50/30 to-purple-50/30 rounded-2xl border border-fuchsia-100/50">

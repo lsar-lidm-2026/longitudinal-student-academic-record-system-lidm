@@ -2,6 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Users,
+  Sparkles,
+  BookOpen,
+  Settings,
+  ChevronRight,
+  LogOut,
+  GraduationCap,
+} from "lucide-react";
 import type { Role } from "../../types";
 
 interface SidebarProps {
@@ -10,80 +20,115 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-const menuItems: Record<string, { label: string; href: string; roles: Role[] }[]> = {
-  main: [
-    { label: "Dashboard", href: "/", roles: ["ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH"] },
-    { label: "Siswa", href: "/students", roles: ["GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] },
-    { label: "ML Dashboard", href: "/ml", roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH"] },
-    { label: "Kelas", href: "/classes", roles: ["ADMINISTRATOR"] },
-    { label: "Tahun Ajaran", href: "/academic-years", roles: ["ADMINISTRATOR"] },
-    { label: "Pengguna", href: "/users", roles: ["ADMINISTRATOR"] },
-  ],
-  bottom: [
-    { label: "Pengaturan", href: "/settings", roles: ["ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH"] },
-  ],
-};
+const menuItems = [
+  {
+    label: "Dashboard",
+    href: "/",
+    icon: LayoutDashboard,
+    roles: ["ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH"] as Role[],
+  },
+  {
+    label: "Data Siswa",
+    href: "/students",
+    icon: Users,
+    roles: ["GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
+  },
+  {
+    label: "AI Assistant",
+    href: "/ml",
+    icon: Sparkles,
+    roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH"] as Role[],
+  },
+  {
+    label: "Buku Induk",
+    href: "/classes",
+    icon: BookOpen,
+    roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
+  },
+  {
+    label: "Pengaturan",
+    href: "/settings",
+    icon: Settings,
+    roles: ["ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH"] as Role[],
+  },
+];
+
+function getRoleLabel(role: Role) {
+  switch (role) {
+    case "ADMINISTRATOR": return "Administrator";
+    case "OPERATOR_SEKOLAH": return "Operator";
+    case "GURU": return "Wali Kelas";
+    case "KEPALA_SEKOLAH": return "Kepala Sekolah";
+    default: return role;
+  }
+}
 
 export function Sidebar({ role, userName, onLogout }: SidebarProps) {
   const pathname = usePathname();
-
-  const visibleItems = menuItems.main.filter((item) => item.roles.includes(role));
-  const bottomItems = menuItems.bottom.filter((item) => item.roles.includes(role));
+  const visibleItems = menuItems.filter((item) => item.roles.includes(role));
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen flex flex-col">
-      <div className="p-4 border-b border-gray-200">
-        <h1 className="text-lg font-bold text-blue-600">LSAR</h1>
-        <p className="text-xs text-gray-500 mt-1">{userName}</p>
-        <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 mt-1">
-          {role === "ADMINISTRATOR" ? "Admin" :
-           role === "OPERATOR_SEKOLAH" ? "Operator" :
-           role === "GURU" ? "Guru" : "Kepala Sekolah"}
-        </span>
+    <aside className="w-60 bg-white border-r border-gray-100 h-screen flex flex-col shrink-0">
+      {/* Logo */}
+      <div className="px-5 py-5 border-b border-gray-100">
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-sm">
+            <GraduationCap className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-[15px] font-bold text-gray-900 tracking-tight">LSAR</span>
+        </Link>
       </div>
 
-      <nav className="flex-1 p-2 space-y-1">
+      {/* Nav Items */}
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
         {visibleItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/"));
+          const isActive =
+            pathname === item.href ||
+            (item.href !== "/" && pathname.startsWith(item.href + "/"));
+          const Icon = item.icon;
+
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150 group ${
                 isActive
-                  ? "bg-blue-50 text-blue-700 font-medium"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  ? "bg-blue-50 text-blue-600"
+                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
               }`}
             >
-              {item.label}
+              <Icon
+                className={`w-[18px] h-[18px] shrink-0 ${
+                  isActive ? "text-blue-600" : "text-gray-400 group-hover:text-gray-500"
+                }`}
+              />
+              <span className="flex-1">{item.label}</span>
+              {isActive && (
+                <ChevronRight className="w-3.5 h-3.5 text-blue-400" />
+              )}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-2 space-y-1">
-        {bottomItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/"));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActive
-                  ? "bg-gray-100 text-gray-900 font-medium"
-                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-              }`}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
+      {/* PERAN AKTIF */}
+      <div className="px-3 pb-4 mt-auto">
         <button
           onClick={onLogout}
-          className="w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors text-left"
+          className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-red-500 hover:bg-red-50 rounded-lg transition-colors mb-3"
         >
-          Logout
+          <LogOut className="w-4 h-4" />
+          Keluar
         </button>
+        <div className="border-t border-gray-100 pt-3">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-1 mb-2">
+            Peran Aktif
+          </p>
+          <div className="bg-blue-50 rounded-lg px-3 py-2.5 border-l-[3px] border-blue-500">
+            <p className="text-[13px] font-semibold text-gray-900">{getRoleLabel(role)}</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">{userName}</p>
+          </div>
+        </div>
       </div>
     </aside>
   );
