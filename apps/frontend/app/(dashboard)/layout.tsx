@@ -16,9 +16,16 @@ export default function DashboardLayout({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
+    let token = localStorage.getItem("accessToken");
+
+    // Fallback to cookie if not in localStorage (middleware redirected but token is in cookie)
     if (!token) {
-      router.push("/login");
+      const match = document.cookie.match(/(?:^|;\s*)accessToken=([^;]*)/);
+      if (match) token = match[1];
+    }
+
+    if (!token) {
+      router.replace("/login");
       return;
     }
 
@@ -30,7 +37,7 @@ export default function DashboardLayout({
           setUser(res.data as JwtPayload);
         } else {
           api.setToken(null);
-          router.push("/login");
+          router.replace("/login");
         }
       })
       .finally(() => setLoading(false));
@@ -38,18 +45,24 @@ export default function DashboardLayout({
 
   function handleLogout() {
     api.setToken(null);
-    router.push("/login");
+    router.replace("/login");
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Memuat...</p>
+        </div>
       </div>
     );
   }
 
-  if (!user) return null;
+  if (!user) {
+    // Will redirect via router.replace
+    return null;
+  }
 
   return (
     <div className="flex min-h-screen">

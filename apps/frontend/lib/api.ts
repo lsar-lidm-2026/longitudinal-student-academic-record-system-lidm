@@ -15,9 +15,11 @@ class ApiClient {
     this.token = token;
     if (token) {
       localStorage.setItem("accessToken", token);
+      document.cookie = `accessToken=${token}; path=/; max-age=604800; SameSite=Lax`;
     } else {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
+      document.cookie = "accessToken=; path=/; max-age=0";
     }
   }
 

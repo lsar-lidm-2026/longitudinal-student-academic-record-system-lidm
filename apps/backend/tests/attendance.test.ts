@@ -19,15 +19,36 @@ describe("Attendance Upsert", () => {
     const a = await service.upsert(recordId, { sick: 2, permission: 1, absent: 0 });
     expect(a.sick).toBe(2);
     expect(a.permission).toBe(1);
+    expect(a.absent).toBe(0);
   });
 
   it("updates existing attendance (upsert)", async () => {
     const a = await service.upsert(recordId, { sick: 3, permission: 2, absent: 1 });
     expect(a.sick).toBe(3);
+    expect(a.permission).toBe(2);
+    expect(a.absent).toBe(1);
   });
 
   it("maintains single record (1:1)", async () => {
     const all = await prisma.attendance.findMany({ where: { semesterRecordId: recordId } });
     expect(all.length).toBe(1);
+  });
+
+  it("handles zero values", async () => {
+    const a = await service.upsert(recordId, { sick: 0, permission: 0, absent: 0 });
+    expect(a.sick).toBe(0);
+    expect(a.permission).toBe(0);
+    expect(a.absent).toBe(0);
+  });
+
+  it("handles large absence values", async () => {
+    const a = await service.upsert(recordId, { sick: 10, permission: 5, absent: 7 });
+    expect(a.sick).toBe(10);
+    expect(a.permission).toBe(5);
+    expect(a.absent).toBe(7);
+  });
+
+  it("throws NotFoundError for non-existent semester record", async () => {
+    expect(service.upsert("nonexistent", { sick: 0, permission: 0, absent: 0 })).rejects.toThrow();
   });
 });

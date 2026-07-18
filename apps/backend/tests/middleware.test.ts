@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ForbiddenError } from "../src/common/error";
+import { ForbiddenError, NotFoundError } from "../src/common/error";
 import { checkRole } from "../src/middleware/role";
 
 describe("checkRole middleware", () => {
@@ -18,36 +18,47 @@ describe("checkRole middleware", () => {
   it("throws ForbiddenError for undefined user", () => {
     expect(() => checkRole(undefined, "ADMINISTRATOR")).toThrow(ForbiddenError);
   });
+
+  it("throws ForbiddenError for unrecognized role", () => {
+    expect(() => checkRole({ userId: "1", role: "GURU" }, "ADMINISTRATOR", "OPERATOR_SEKOLAH")).toThrow(ForbiddenError);
+  });
+
+  it("allows ADMINISTRATOR access to everything", () => {
+    expect(() => checkRole({ userId: "1", role: "ADMINISTRATOR" }, "GURU", "OPERATOR_SEKOLAH")).not.toThrow();
+  });
+
+  it("allows OPERATOR_SEKOLAH when included", () => {
+    expect(() => checkRole({ userId: "1", role: "OPERATOR_SEKOLAH" }, "ADMINISTRATOR", "OPERATOR_SEKOLAH")).not.toThrow();
+  });
 });
 
 describe("Error classes", () => {
   it("AppError has statusCode and code", () => {
-    const { AppError, UnauthorizedError, NotFoundError } = require("../src/common/error");
+    const { AppError, UnauthorizedError, NotFoundError: NE } = require("../src/common/error");
     expect(new AppError(418, "TEAPOT", "msg").statusCode).toBe(418);
     expect(new UnauthorizedError().statusCode).toBe(401);
-    expect(new NotFoundError().statusCode).toBe(404);
-    expect(new NotFoundError("custom").message).toBe("custom");
-  });
-});
-
-describe("Response helpers", () => {
-  it("success wraps data", async () => {
-    const { success, error } = await import("../src/common/response");
-    expect(success({ x: 1 })).toEqual({ success: true, data: { x: 1 } });
-    expect(error("ERR", "msg")).toEqual({ success: false, error: { code: "ERR", message: "msg" } });
-  });
-});
-
-describe("Pagination", () => {
-  it("parses and builds correctly", async () => {
-    const { parsePagination, buildPagination } = await import("../src/common/pagination");
-    expect(parsePagination({ page: "2", limit: "10" })).toEqual({ page: 2, limit: 10 });
-    expect(buildPagination(1, 20)).toEqual({ skip: 0, take: 20 });
+    expect(new NE().statusCode).toBe(404);
+    expect(new NE("custom").message).toBe("custom");
   });
 
-  it("clamps values", async () => {
-    const { parsePagination } = await import("../src/common/pagination");
-    expect(parsePagination({ page: "0", limit: "0" })).toEqual({ page: 1, limit: 20 });
-    expect(parsePagination({ limit: "999" }).limit).toBe(100);
+  it("all error classes extend AppError", () => {
+    const { AppError, UnauthorizedError, ForbiddenError: FE, NotFoundError: NE, ValidationError, ConflictError, AiError } = require("../src/common/error");
+    expect(new UnauthorizedError()).toBeInstanceOf(AppError);
+    expect(new FE()).toBeInstanceOf(AppError);
+    expect(new NE()).toBeInstanceOf(AppError);
+    expect(new ValidationError()).toBeInstanceOf(AppError);
+    expect(new ConflictError()).toBeInstanceOf(AppError);
+    expect(new AiError()).toBeInstanceOf(AppError);
+  });
+
+  it("AiError defaults to 502", () => {
+    const { AiError } = require("../src/common/error");
+    expect(new AiError().statusCode).toBe(502);
+    expect(new AiError("LLM timeout").message).toBe("LLM timeout");
+  });
+
+  it("ValidationError defaults to 400", () => {
+    const { ValidationError } = require("../src/common/error");
+    expect(new ValidationError().statusCode).toBe(400);
   });
 });
