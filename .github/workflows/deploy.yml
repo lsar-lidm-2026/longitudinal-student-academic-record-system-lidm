@@ -75,14 +75,11 @@ jobs:
           # Copy compose file
           scp "${SSH_OPTS[@]}" docker-compose.yml "$VPS_USER@$VPS_HOST:$VPS_TARGET_DIR/docker-compose.yml"
 
-          # Deploy
-          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" bash -s <<SHELL
-            set -euo pipefail
-            cd "$VPS_TARGET_DIR"
-
+          # Deploy via SSH (inline commands, no heredoc to avoid YAML parsing conflict)
+          ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" bash -c "
+            cd $VPS_TARGET_DIR
             docker network inspect app-shared-net >/dev/null 2>&1 || docker network create app-shared-net
-
-            docker compose pull
+            docker compose pull 2>/dev/null || true
             docker compose up -d --remove-orphans
-            docker image prune -a -f --filter "until=24h" || true
-SHELL
+            docker image prune -a -f --filter 'until=24h' 2>/dev/null || true
+          "
