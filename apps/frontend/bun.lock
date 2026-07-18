@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "backend",
+      "name": "lsar-frontend",
       "dependencies": {
         "@base-ui/react": "^1.6.0",
         "@tremor/react": "^3.18.7",
