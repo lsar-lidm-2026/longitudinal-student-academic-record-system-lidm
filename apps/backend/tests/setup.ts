@@ -4,7 +4,7 @@ export async function cleanDb() {
   const tables = [
     "ai_summary", "health_record", "achievement", "attendance",
     "subject_score", "semester_record", "student", "class_audit_log",
-    "class", "academic_year", "user",
+    "class", "academic_year", "user", "ml_model", "predicted_outcome",
   ];
   for (const t of tables) {
     try { await prisma.$executeRawUnsafe(`DELETE FROM "${t}"`); }
