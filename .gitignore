@@ -6,3 +6,4 @@ docs/S3_GUIDE.md
 apps/frontend/test-results
 e2e/
 apps/frontend/e2e-screenshots
+apps/backend/models

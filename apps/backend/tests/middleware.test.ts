@@ -23,8 +23,12 @@ describe("checkRole middleware", () => {
     expect(() => checkRole({ userId: "1", role: "GURU" }, "ADMINISTRATOR", "OPERATOR_SEKOLAH")).toThrow(ForbiddenError);
   });
 
-  it("allows ADMINISTRATOR access to everything", () => {
-    expect(() => checkRole({ userId: "1", role: "ADMINISTRATOR" }, "GURU", "OPERATOR_SEKOLAH")).not.toThrow();
+  it("allows ADMINISTRATOR when listed in allowed roles", () => {
+    expect(() => checkRole({ userId: "1", role: "ADMINISTRATOR" }, "ADMINISTRATOR", "GURU")).not.toThrow();
+  });
+
+  it("throws if ADMINISTRATOR is not in allowed roles list", () => {
+    expect(() => checkRole({ userId: "1", role: "ADMINISTRATOR" }, "GURU", "OPERATOR_SEKOLAH")).toThrow(ForbiddenError);
   });
 
   it("allows OPERATOR_SEKOLAH when included", () => {

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Toaster } from "sonner";
 import { Sidebar } from "../../components/layout/Sidebar";
+import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { api } from "../../lib/api";
 import type { JwtPayload } from "../../types";
 
@@ -60,14 +62,16 @@ export default function DashboardLayout({
   }
 
   if (!user) {
-    // Will redirect via router.replace
     return null;
   }
 
   return (
     <div className="flex min-h-screen">
+      <Toaster richColors position="top-right" />
       <Sidebar role={user.role} userName={user.name} onLogout={handleLogout} />
-      <main className="flex-1 p-6 overflow-auto">{children}</main>
+      <main className="flex-1 p-6 overflow-auto">
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </main>
     </div>
   );
 }

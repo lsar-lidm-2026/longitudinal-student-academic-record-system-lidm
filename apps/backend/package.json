@@ -2,7 +2,7 @@
   "name": "backend",
   "version": "1.0.50",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "bun test",
     "dev": "bun run --watch src/index.ts"
   },
   "dependencies": {
@@ -13,7 +13,8 @@
     "@prisma/client": "^7.8.0",
     "dotenv": "^17.4.2",
     "elysia": "latest",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "onnxruntime-node": "^1.27.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,15 +92,26 @@ export default function SemesterRecordsPage() {
   async function saveAll(e: FormEvent) {
     e.preventDefault();
     if (!recordId) await createOrGetRecord();
+    if (!recordId) {
+      toast.error("Gagal membuat record semester");
+      return;
+    }
     setLoading(true);
 
-    for (const score of scores) {
-      await api.put(`/semester-records/${recordId}/subject-scores`, score);
+    try {
+      // Batch save all subject scores in one call
+      const scoresRes = await api.put(`/semester-records/${recordId}/subject-scores/batch`, { scores });
+      if (!scoresRes.success) throw new Error(scoresRes.error?.message || "Gagal menyimpan nilai");
+
+      const attRes = await api.put(`/semester-records/${recordId}/attendance`, attendance);
+      if (!attRes.success) throw new Error(attRes.error?.message || "Gagal menyimpan kehadiran");
+
+      toast.success("Data berhasil disimpan!");
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan data");
     }
-    await api.put(`/semester-records/${recordId}/attendance`, attendance);
 
     setLoading(false);
-    alert("Data berhasil disimpan!");
   }
 
   return (

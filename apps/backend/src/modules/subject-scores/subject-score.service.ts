@@ -44,3 +44,46 @@ export async function remove(id: string) {
   if (!item) throw new NotFoundError("Subject score not found");
   return prisma.subjectScore.delete({ where: { id } });
 }
+
+/**
+ * Batch upsert multiple subject scores in a single transaction.
+ */
+export async function batchUpsert(
+  semesterRecordId: string,
+  scores: Array<{
+    subjectName: string;
+    knowledgeScore: number;
+    skillsScore: number;
+    notes?: string;
+  }>
+) {
+  const record = await prisma.semesterRecord.findUnique({
+    where: { id: semesterRecordId },
+  });
+  if (!record) throw new NotFoundError("Semester record not found");
+
+  return prisma.$transaction(
+    scores.map((score) =>
+      prisma.subjectScore.upsert({
+        where: {
+          semesterRecordId_subjectName: {
+            semesterRecordId,
+            subjectName: score.subjectName,
+          },
+        },
+        update: {
+          knowledgeScore: score.knowledgeScore,
+          skillsScore: score.skillsScore,
+          notes: score.notes || null,
+        },
+        create: {
+          semesterRecordId,
+          subjectName: score.subjectName,
+          knowledgeScore: score.knowledgeScore,
+          skillsScore: score.skillsScore,
+          notes: score.notes || null,
+        },
+      })
+    )
+  );
+}

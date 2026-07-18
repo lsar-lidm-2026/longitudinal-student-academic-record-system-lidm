@@ -2,11 +2,13 @@ import { Elysia, t } from "elysia";
 import * as service from "./attendance.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
+import { requireRecordOwner } from "../../middleware/record-owner";
 
 export const attendanceController = new Elysia({ prefix: "/semester-records" })
   .guard({}, (app) =>
     app
       .use(requireAuth)
+      .use(requireRecordOwner)
       .put(
         "/:id/attendance",
         async ({ params, body }) => {

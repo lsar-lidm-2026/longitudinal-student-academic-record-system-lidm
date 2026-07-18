@@ -125,3 +125,63 @@ export interface StudentProfile {
   student: Student & { class: { id: string; name: string } };
   semesterRecords: SemesterRecord[];
 }
+
+// ── ML Types ──────────────────────────────────────────────────────────
+
+export interface RiskResult {
+  studentId: string;
+  name: string;
+  risk: {
+    level: "AMAN" | "WASPADA" | "KRITIS";
+    score: number;
+    confidence?: number;
+    factors: string[];
+    recommendations: string[];
+    aiExplanation?: string;
+  };
+  features?: {
+    avgKnowledge: number;
+    scoreDelta: number;
+    scoreVolatility: number;
+    totalAbsence: number;
+    achievementCount: number;
+    semesterCount: number;
+  };
+  trend: {
+    trend: "NAIK" | "STABIL" | "TURUN";
+    description: string;
+  };
+}
+
+export interface RiskSummary {
+  total: number;
+  kritis: number;
+  waspada: number;
+  aman: number;
+  kritisStudents: { id: string; name: string; score: number }[];
+}
+
+export interface RiskData {
+  results: RiskResult[];
+  summary: RiskSummary;
+}
+
+export interface ClusterAssignment {
+  studentId: string;
+  name: string;
+  clusterId: number;
+  clusterLabel: string;
+}
+
+export interface ClusterProfile {
+  clusterId: number;
+  size: number;
+  avgKnowledge: number;
+  avgAbsence: number;
+}
+
+export interface ClusterResult {
+  clusters: ClusterProfile[];
+  assignments: ClusterAssignment[];
+  profiles: { clusterId: number; label: string; description: string }[];
+}

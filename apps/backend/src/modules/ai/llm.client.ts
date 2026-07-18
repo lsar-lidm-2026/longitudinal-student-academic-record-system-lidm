@@ -29,6 +29,8 @@ export async function generateChatCompletion(
       temperature: options?.temperature ?? 0.7,
       max_tokens: options?.maxTokens ?? 1024,
     }),
+    // Prevent hanging forever when API is unreachable
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!response.ok) {

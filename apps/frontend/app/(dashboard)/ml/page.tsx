@@ -7,32 +7,36 @@ import { NumberTicker } from "@/components/ui/number-ticker";
 import { CardContainer, CardBody, CardItem } from "@/components/ui/3d-card";
 import { RiskHeatmap } from "@/components/ml/RiskHeatmap";
 import { api } from "@/lib/api";
-import type { ClassItem } from "@/types";
+import type { ClassItem, RiskData } from "@/types";
 
 export default function MLDashboardPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
-  const [riskData, setRiskData] = useState<any>(null);
+  const [riskData, setRiskData] = useState<RiskData | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     api.get<ClassItem[]>("/classes").then((res) => {
       if (res.success && res.data) {
-        setClasses(res.data as ClassItem[]);
-        if ((res.data as ClassItem[]).length > 0) setSelectedClass((res.data as ClassItem[])[0].id);
+        const items = res.data;
+        setClasses(items);
+        if (items.length > 0) setSelectedClass(items[0].id);
       }
     });
-    api.get<any>("/dashboard/summary").then((res) => {
-      if (res.success && res.data?.managedClasses?.length > 0) {
-        const managed = res.data.managedClasses.map((c: any) => ({
-          id: c.id, name: c.name, academicYearId: "",
-        })) as ClassItem[];
-        setClasses((prev) => {
-          const ids = new Set(prev.map((c) => c.id));
-          const merged = [...prev, ...managed.filter((m: any) => !ids.has(m.id))];
-          if (merged.length > 0 && !selectedClass) setSelectedClass(merged[0].id);
-          return merged;
-        });
+    api.get<{ managedClasses?: { id: string; name: string }[] }>("/dashboard/summary").then((res) => {
+      if (res.success && res.data) {
+        const managed = res.data.managedClasses;
+        if (managed && managed.length > 0) {
+          const mapped = managed.map((c) => ({
+            id: c.id, name: c.name, academicYearId: "", homeroomTeacherId: null,
+          })) as ClassItem[];
+          setClasses((prev) => {
+            const ids = new Set(prev.map((c) => c.id));
+            const merged = [...prev, ...mapped.filter((m) => !ids.has(m.id))];
+            if (merged.length > 0 && !selectedClass) setSelectedClass(merged[0].id);
+            return merged;
+          });
+        }
       }
     });
   }, []);
@@ -40,8 +44,8 @@ export default function MLDashboardPage() {
   useEffect(() => {
     if (!selectedClass) return;
     setLoading(true);
-    api.get(`/ml/risk/class/${selectedClass}`).then((res) => {
-      if (res.success && res.data) setRiskData(res.data as any);
+    api.get<RiskData>(`/ml/risk/class/${selectedClass}`).then((res) => {
+      if (res.success && res.data) setRiskData(res.data);
       setLoading(false);
     });
   }, [selectedClass]);

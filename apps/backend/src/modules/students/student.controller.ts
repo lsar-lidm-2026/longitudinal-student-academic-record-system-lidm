@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import * as service from "./student.service";
 import { success, paginated } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
+import { requireHomeroomAccess } from "../../middleware/homeroom";
 import { checkRole } from "../../middleware/role";
 
 export const studentController = new Elysia({ prefix: "/students" })
@@ -28,25 +29,29 @@ export const studentController = new Elysia({ prefix: "/students" })
       }),
     }
   )
-  .put(
-    "/:id",
-    async ({ params, body, user }) => {
-      checkRole(user, "OPERATOR_SEKOLAH");
-      const data = await service.update(params.id, body);
-      return success(data);
-    },
-    {
-      body: t.Object({
-        nis: t.Optional(t.String()),
-        nisn: t.Optional(t.String()),
-        name: t.Optional(t.String()),
-        gender: t.Optional(t.String()),
-        classId: t.Optional(t.String()),
-      }),
-    }
-  )
-  .get("/:id", async ({ params, user }) => {
-    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH");
-    const data = await service.getById(params.id);
-    return success(data);
-  });
+  .guard({}, (app) =>
+    app
+      .use(requireHomeroomAccess)
+      .put(
+        "/:id",
+        async ({ params, body, user }) => {
+          checkRole(user, "OPERATOR_SEKOLAH");
+          const data = await service.update(params.id, body);
+          return success(data);
+        },
+        {
+          body: t.Object({
+            nis: t.Optional(t.String()),
+            nisn: t.Optional(t.String()),
+            name: t.Optional(t.String()),
+            gender: t.Optional(t.String()),
+            classId: t.Optional(t.String()),
+          }),
+        }
+      )
+      .get("/:id", async ({ params, user }) => {
+        checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH");
+        const data = await service.getById(params.id);
+        return success(data);
+      })
+  );

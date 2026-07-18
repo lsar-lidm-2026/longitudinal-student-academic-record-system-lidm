@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { swagger } from "@elysiajs/swagger";
 import { env } from "./config/env";
-import { error as errorResponse } from "./common/response";
+import { success, error as errorResponse } from "./common/response";
 import { authController } from "./modules/auth/auth.controller";
 import { academicYearController } from "./modules/academic-years/academic-year.controller";
 import { classController } from "./modules/classes/class.controller";
@@ -19,6 +19,7 @@ import { aiController } from "./modules/ai/ai.controller";
 import { aiSummaryController } from "./modules/ai/ai-summary.controller";
 import { mlController } from "./modules/ml/ml.controller";
 import { checkDbHealth } from "./lib/prisma";
+import { trainModels } from "./modules/ml/trainer";
 
 const app = new Elysia()
   .use(cors())
@@ -78,14 +79,11 @@ const app = new Elysia()
   .get("/api/health", async () => {
     const [db] = await Promise.all([checkDbHealth()]);
     const allOk = db.ok;
-    return {
-      success: allOk,
-      data: {
-        status: allOk ? "ok" : "degraded",
-        timestamp: new Date().toISOString(),
-        database: db,
-      },
-    };
+    return success({
+      status: allOk ? "ok" : "degraded",
+      timestamp: new Date().toISOString(),
+      database: db,
+    });
   })
   // Routes
   .group("/api", (app) =>
@@ -110,3 +108,22 @@ const app = new Elysia()
 
 console.log(`🦊 LSAR API running at http://localhost:${env.port}`);
 console.log(`📚 API docs at http://localhost:${env.port}/docs`);
+
+// Auto-train ML models on startup
+trainModels().then((m) => {
+  console.log(`🧠 ML models ready (trained at ${m.trainedAt?.toISOString()})`);
+}).catch((err) => {
+  console.warn(`⚠️  ML models not trained yet: ${err.message}`);
+});
+
+// Periodic retraining every 6 hours
+const RETRAIN_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+setInterval(async () => {
+  console.log(`🔄 Scheduled ML retraining at ${new Date().toISOString()}`);
+  try {
+    const result = await trainModels();
+    console.log(`✅ ML models retrained at ${result.trainedAt?.toISOString()}`);
+  } catch (err: any) {
+    console.error(`❌ ML retraining failed: ${err.message}`);
+  }
+}, RETRAIN_INTERVAL_MS);

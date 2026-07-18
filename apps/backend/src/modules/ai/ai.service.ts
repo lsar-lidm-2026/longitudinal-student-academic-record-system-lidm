@@ -56,19 +56,23 @@ export async function generateStudentSummary(studentId: string) {
     { role: "user", content: prompt },
   ]);
 
-  // Get version count
-  const existingCount = await prisma.aiSummary.count({
-    where: { semesterRecordId: latest.id, summaryType: "STUDENT_SUMMARY" },
-  });
+  // Atomic version increment — prevents race conditions
+  return prisma.$transaction(async (tx) => {
+    const max = await tx.aiSummary.aggregate({
+      where: { semesterRecordId: latest.id, summaryType: "STUDENT_SUMMARY" },
+      _max: { version: true },
+    });
+    const nextVersion = (max._max.version || 0) + 1;
 
-  return prisma.aiSummary.create({
-    data: {
-      semesterRecordId: latest.id,
-      summaryType: "STUDENT_SUMMARY",
-      content,
-      version: existingCount + 1,
-      isFinal: false,
-    },
+    return tx.aiSummary.create({
+      data: {
+        semesterRecordId: latest.id,
+        summaryType: "STUDENT_SUMMARY",
+        content,
+        version: nextVersion,
+        isFinal: false,
+      },
+    });
   });
 }
 
@@ -99,18 +103,23 @@ export async function generateDraftDescription(studentId: string) {
     { role: "user", content: prompt },
   ]);
 
-  const existingCount = await prisma.aiSummary.count({
-    where: { semesterRecordId: latest.id, summaryType: "DRAFT_DESCRIPTION" },
-  });
+  // Atomic version increment
+  return prisma.$transaction(async (tx) => {
+    const max = await tx.aiSummary.aggregate({
+      where: { semesterRecordId: latest.id, summaryType: "DRAFT_DESCRIPTION" },
+      _max: { version: true },
+    });
+    const nextVersion = (max._max.version || 0) + 1;
 
-  return prisma.aiSummary.create({
-    data: {
-      semesterRecordId: latest.id,
-      summaryType: "DRAFT_DESCRIPTION",
-      content,
-      version: existingCount + 1,
-      isFinal: false,
-    },
+    return tx.aiSummary.create({
+      data: {
+        semesterRecordId: latest.id,
+        summaryType: "DRAFT_DESCRIPTION",
+        content,
+        version: nextVersion,
+        isFinal: false,
+      },
+    });
   });
 }
 
@@ -150,18 +159,23 @@ export async function generateTransitionSummary(classId: string) {
 
     const latestRecord = semesterRecords[semesterRecords.length - 1];
 
-    const existingCount = await prisma.aiSummary.count({
-      where: { semesterRecordId: latestRecord.id, summaryType: "TRANSITION_SUMMARY" },
-    });
+    // Atomic version increment
+    const summary = await prisma.$transaction(async (tx) => {
+      const max = await tx.aiSummary.aggregate({
+        where: { semesterRecordId: latestRecord.id, summaryType: "TRANSITION_SUMMARY" },
+        _max: { version: true },
+      });
+      const nextVersion = (max._max.version || 0) + 1;
 
-    const summary = await prisma.aiSummary.create({
-      data: {
-        semesterRecordId: latestRecord.id,
-        summaryType: "TRANSITION_SUMMARY",
-        content,
-        version: existingCount + 1,
-        isFinal: false,
-      },
+      return tx.aiSummary.create({
+        data: {
+          semesterRecordId: latestRecord.id,
+          summaryType: "TRANSITION_SUMMARY",
+          content,
+          version: nextVersion,
+          isFinal: false,
+        },
+      });
     });
 
     results.push(summary);

@@ -2,11 +2,13 @@ import { Elysia, t } from "elysia";
 import * as service from "./semester-record.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
+import { requireHomeroomAccess } from "../../middleware/homeroom";
 
 export const semesterRecordController = new Elysia({ prefix: "/students" })
   .guard({}, (app) =>
     app
       .use(requireAuth)
+      .use(requireHomeroomAccess)
       .post(
         "/:id/semester-records",
         async ({ params, body, user }) => {

@@ -2,9 +2,12 @@ import { prisma } from "../../lib/prisma";
 import { ConflictError, NotFoundError } from "../../common/error";
 import { parsePagination, buildPagination } from "../../common/pagination";
 
-export async function list(query: { page?: string; limit?: string; classId?: string }) {
+export async function list(query: { page?: string; limit?: string; classId?: string; search?: string }) {
   const { page, limit } = parsePagination(query);
-  const where = query.classId ? { classId: query.classId } : {};
+  const where: any = query.classId ? { classId: query.classId } : {};
+  if (query.search) {
+    where.name = { contains: query.search, mode: "insensitive" };
+  }
 
   const [data, total] = await Promise.all([
     prisma.student.findMany({

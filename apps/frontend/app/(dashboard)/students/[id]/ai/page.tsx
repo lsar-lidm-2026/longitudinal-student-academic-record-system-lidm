@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,9 +49,10 @@ export default function AiAssistantPage() {
     const res = await api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord });
     if (res.success && res.data) {
       setResult(res.data as AiSummary);
+      toast.success("AI analysis berhasil digenerate");
       loadSummaries();
     } else {
-      alert("Gagal generate: " + (res.error?.message || "Unknown error"));
+      toast.error(res.error?.message || "Gagal generate AI analysis");
     }
     setGenerating(false);
   }

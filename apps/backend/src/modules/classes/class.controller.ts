@@ -36,7 +36,8 @@ export const classController = new Elysia({ prefix: "/classes" })
       body: t.Object({ teacherId: t.String() }),
     }
   )
-  .get("/:id/students", async ({ params }) => {
+  .get("/:id/students", async ({ params, user }) => {
+    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH");
     const data = await service.getStudents(params.id);
     return success(data);
   });
