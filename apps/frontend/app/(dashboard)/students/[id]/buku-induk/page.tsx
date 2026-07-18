@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Badge } from "@/components/ui/badge";
 import { BorderBeam } from "@/components/ui/border-beam";
@@ -26,22 +27,46 @@ export default function BukuIndukPage() {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [validation, setValidation] = useState<ValidationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
+    setLoading(true);
+    setError(null);
     Promise.all([
       api.get<PreviewData>(`/students/${params.id}/buku-induk-preview`),
       api.get<ValidationItem[]>(`/students/${params.id}/validation-status`),
-    ]).then(([previewRes, validationRes]) => {
-      if (previewRes.success && previewRes.data) setPreview(previewRes.data as PreviewData);
-      if (validationRes.success && validationRes.data) setValidation(validationRes.data as ValidationItem[]);
-      setLoading(false);
-    });
-  }, [params.id]);
+    ])
+      .then(([previewRes, validationRes]) => {
+        if (previewRes.success && previewRes.data) setPreview(previewRes.data as PreviewData);
+        if (validationRes.success && validationRes.data) setValidation(validationRes.data as ValidationItem[]);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data buku induk");
+        setLoading(false);
+      });
+  }
+
+  useEffect(() => { refresh(); }, [params.id]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={refresh}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
       </div>
     );
   }
@@ -52,6 +77,14 @@ export default function BukuIndukPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      <div className="text-sm text-gray-500 mb-2 flex flex-wrap items-center gap-x-2">
+        <Link href="/students" className="hover:text-blue-600 transition-colors">Siswa</Link>
+        <span>/</span>
+        <Link href={`/students/${params.id}`} className="hover:text-blue-600 transition-colors">Detail</Link>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">Buku Induk</span>
+      </div>
+
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
         <div className="relative p-6 bg-gradient-to-br from-white via-amber-50/30 rounded-2xl border border-amber-100/50">

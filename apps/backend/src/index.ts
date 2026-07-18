@@ -23,6 +23,12 @@ import { checkDbHealth } from "./lib/prisma";
 import { trainModels } from "./modules/ml/trainer";
 import { getModels } from "./modules/ml/ml.service";
 
+// Validate critical env vars at startup
+if (!env.jwtSecret) {
+  console.error("❌ JWT_SECRET is not set. Application will not start.");
+  process.exit(1);
+}
+
 const app = new Elysia()
   .use(cors())
   .use(

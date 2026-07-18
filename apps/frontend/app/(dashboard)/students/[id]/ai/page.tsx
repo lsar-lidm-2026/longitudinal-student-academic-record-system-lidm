@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
@@ -22,17 +23,29 @@ export default function AiAssistantPage() {
   const [generating, setGenerating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [result, setResult] = useState<AiSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`).then((res) => {
-      if (res.success && res.data) setRecords(res.data as SemesterRecord[]);
-    });
-  }, [params.id]);
+  function refresh() {
+    setError(null);
+    api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`)
+      .then((res) => {
+        if (res.success && res.data) setRecords(res.data as SemesterRecord[]);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data semester");
+      });
+  }
+
+  useEffect(() => { refresh(); }, [params.id]);
 
   async function loadSummaries() {
     if (!selectedRecord) return;
-    const res = await api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`);
-    if (res.success && res.data) setSummaries(res.data as AiSummary[]);
+    try {
+      const res = await api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`);
+      if (res.success && res.data) setSummaries(res.data as AiSummary[]);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memuat riwayat AI");
+    }
   }
 
   useEffect(() => { loadSummaries(); }, [selectedRecord]);
@@ -47,36 +60,48 @@ export default function AiAssistantPage() {
       "draft-description": `/ai/students/${params.id}/draft-description`,
     };
 
-    const res = await api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord });
-    if (res.success && res.data) {
-      setResult(res.data as AiSummary);
-      toast.success("AI analysis berhasil digenerate");
-      loadSummaries();
-    } else {
-      toast.error(res.error?.message || "Gagal generate AI analysis");
+    try {
+      const res = await api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord });
+      if (res.success && res.data) {
+        setResult(res.data as AiSummary);
+        toast.success("AI analysis berhasil digenerate");
+        loadSummaries();
+      } else {
+        toast.error(res.error?.message || "Gagal generate AI analysis");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal generate AI analysis");
     }
     setGenerating(false);
   }
 
   async function finalize(summaryId: string) {
-    const res = await api.put(`/ai-summaries/${summaryId}`, { isFinal: true });
-    if (res.success) {
-      loadSummaries();
-      toast.success("AI summary berhasil difinalkan");
-    } else {
-      toast.error(res.error?.message || "Gagal finalkan");
+    try {
+      const res = await api.put(`/ai-summaries/${summaryId}`, { isFinal: true });
+      if (res.success) {
+        loadSummaries();
+        toast.success("AI summary berhasil difinalkan");
+      } else {
+        toast.error(res.error?.message || "Gagal finalkan");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal finalkan AI summary");
     }
   }
 
   async function regenerate(summaryId: string) {
     setRegenerating(true);
-    const res = await api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`);
-    if (res.success && res.data) {
-      setResult(res.data as AiSummary);
-      toast.success("AI berhasil di-regenerate");
-      loadSummaries();
-    } else {
-      toast.error(res.error?.message || "Gagal regenerate AI");
+    try {
+      const res = await api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`);
+      if (res.success && res.data) {
+        setResult(res.data as AiSummary);
+        toast.success("AI berhasil di-regenerate");
+        loadSummaries();
+      } else {
+        toast.error(res.error?.message || "Gagal regenerate AI");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal regenerate AI");
     }
     setRegenerating(false);
   }
@@ -88,6 +113,14 @@ export default function AiAssistantPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      <div className="text-sm text-gray-500 mb-2 flex flex-wrap items-center gap-x-2">
+        <Link href="/students" className="hover:text-blue-600 transition-colors">Siswa</Link>
+        <span>/</span>
+        <Link href={`/students/${params.id}`} className="hover:text-blue-600 transition-colors">Detail</Link>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">AI Assistant</span>
+      </div>
+
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={8} />
         <div className="relative p-6 bg-gradient-to-br from-white via-violet-50/30 to-purple-50/30 rounded-2xl border border-violet-100/50">
@@ -98,6 +131,19 @@ export default function AiAssistantPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="text-center py-12 text-red-500">
+          <p>{error}</p>
+          <button
+            onClick={refresh}
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      )}
+
+      {!error && (
       <MagicCard className="p-6" gradientSize={200}>
         <div className="flex flex-col sm:flex-row gap-4 items-end">
           <div className="flex-1 w-full">
@@ -131,6 +177,7 @@ export default function AiAssistantPage() {
           </Button>
         </div>
       </MagicCard>
+      )}
 
       {result && (
         <MagicCard className="p-6" gradientSize={250}>

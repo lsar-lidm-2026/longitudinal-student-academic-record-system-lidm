@@ -136,12 +136,6 @@ async function main() {
         if (rSRec.rowCount === 0) throw new Error(`semester record insert returned 0 rows`);
         const rID = rSRec.rows[0].id;
 
-        // Verify rID is valid
-        if (si === 0 && yi === 0 && sem === 0) {
-          const checkSem = await q(`SELECT id FROM semester_record WHERE id=$1`, rID);
-          console.log(`DEBUG: semrecord exists=${checkSem.rowCount} rID=${rID.substring(0,8)}... sID=${sID.substring(0,8)}... yearId=${yearIds[yi]?.substring(0,8)}`);
-        }
-
         // 8 subject scores — batch INSERT via parameterized query
         for (let si2 = 0; si2 < SUBJ.length; si2++) {
           const ks = scores[si2];

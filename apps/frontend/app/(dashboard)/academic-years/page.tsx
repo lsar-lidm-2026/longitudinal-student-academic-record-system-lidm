@@ -1,48 +1,70 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
+import { AuthGuard } from "@/components/layout/AuthGuard";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { AcademicYear } from "@/types";
 
 export default function AcademicYearsPage() {
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [newYear, setNewYear] = useState("");
 
   function load() {
-    api.get<AcademicYear[]>("/academic-years").then((res) => {
-      if (res.success && res.data) setYears(res.data as AcademicYear[]);
-      setLoading(false);
-    });
+    setLoading(true);
+    setError(null);
+    api.get<AcademicYear[]>("/academic-years")
+      .then((res) => {
+        if (res.success && res.data) setYears(res.data as AcademicYear[]);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat tahun ajaran");
+        setLoading(false);
+      });
   }
 
   useEffect(() => { load(); }, []);
 
   async function create(e: FormEvent) {
     e.preventDefault();
-    const res = await api.post("/academic-years", { year: newYear });
-    if (res.success) {
-      setNewYear("");
-      load();
-    } else {
-      alert(res.error?.message || "Gagal membuat tahun ajaran");
+    try {
+      const res = await api.post("/academic-years", { year: newYear });
+      if (res.success) {
+        setNewYear("");
+        load();
+      } else {
+        toast.error(res.error?.message || "Gagal membuat tahun ajaran");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membuat tahun ajaran");
     }
   }
 
   async function activate(id: string) {
-    await api.patch(`/academic-years/${id}/activate`);
-    load();
+    try {
+      await api.patch(`/academic-years/${id}/activate`);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengaktifkan tahun ajaran");
+    }
   }
 
   async function archive(id: string) {
-    await api.patch(`/academic-years/${id}/archive`);
-    load();
+    try {
+      await api.patch(`/academic-years/${id}/archive`);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengarsipkan tahun ajaran");
+    }
   }
 
   if (loading) {
@@ -53,7 +75,22 @@ export default function AcademicYearsPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={load}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
   return (
+    <AuthGuard roles={["ADMINISTRATOR"]}>
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
@@ -117,5 +154,6 @@ export default function AcademicYearsPage() {
         </div>
       </MagicCard>
     </div>
+    </AuthGuard>
   );
 }

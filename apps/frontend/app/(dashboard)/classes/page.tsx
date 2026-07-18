@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AuthGuard } from "@/components/layout/AuthGuard";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Badge } from "@/components/ui/badge";
 import { BorderBeam } from "@/components/ui/border-beam";
@@ -12,25 +13,39 @@ export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
+    setLoading(true);
+    setError(null);
     Promise.all([
       api.get<ClassItem[]>("/classes"),
       api.get<User[]>("/auth/users"),
-    ]).then(([classesRes, usersRes]) => {
-      if (classesRes.success && classesRes.data) setClasses(classesRes.data as ClassItem[]);
-      if (usersRes.success && usersRes.data) {
-        const guru = (usersRes.data as User[]).filter((u) => u.role === "GURU");
-        setUsers(guru);
-      }
-      setLoading(false);
-    });
-  }, []);
+    ])
+      .then(([classesRes, usersRes]) => {
+        if (classesRes.success && classesRes.data) setClasses(classesRes.data as ClassItem[]);
+        if (usersRes.success && usersRes.data) {
+          const guru = (usersRes.data as User[]).filter((u) => u.role === "GURU");
+          setUsers(guru);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data kelas");
+        setLoading(false);
+      });
+  }
+
+  useEffect(() => { refresh(); }, []);
 
   async function assignTeacher(classId: string, teacherId: string) {
-    await api.patch(`/classes/${classId}/homeroom-teacher`, { teacherId });
-    const res = await api.get<ClassItem[]>("/classes");
-    if (res.success && res.data) setClasses(res.data as ClassItem[]);
+    try {
+      await api.patch(`/classes/${classId}/homeroom-teacher`, { teacherId });
+      const res = await api.get<ClassItem[]>("/classes");
+      if (res.success && res.data) setClasses(res.data as ClassItem[]);
+    } catch (err: any) {
+      // silent catch — UI tetap konsisten
+    }
   }
 
   if (loading) {
@@ -41,7 +56,22 @@ export default function ClassesPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={refresh}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
   return (
+    <AuthGuard roles={["ADMINISTRATOR"]}>
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
@@ -98,5 +128,6 @@ export default function ClassesPage() {
         </table>
       </MagicCard>
     </div>
+    </AuthGuard>
   );
 }

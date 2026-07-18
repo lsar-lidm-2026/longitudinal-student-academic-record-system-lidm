@@ -2,6 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
@@ -34,25 +35,37 @@ export default function SemesterRecordsPage() {
     SUBJECTS.map((s) => ({ subjectName: s, knowledgeScore: 0, skillsScore: 0 }))
   );
   const [attendance, setAttendance] = useState({ sick: 0, permission: 0, absent: 0 });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
+    setLoading(true);
+    setError(null);
     Promise.all([
       api.get<AcademicYear[]>("/academic-years"),
       api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`),
-    ]).then(([yearsRes, recordsRes]) => {
-      if (yearsRes.success && yearsRes.data) {
-        setAcademicYears(yearsRes.data as AcademicYear[]);
-        const active = (yearsRes.data as AcademicYear[]).find((y) => y.isActive);
-        if (active) setSelectedYear(active.id);
-      }
-      if (recordsRes.success && recordsRes.data) {
-        setRecords(recordsRes.data as SemesterRecord[]);
-      }
-    });
-  }, [params.id]);
+    ])
+      .then(([yearsRes, recordsRes]) => {
+        if (yearsRes.success && yearsRes.data) {
+          setAcademicYears(yearsRes.data as AcademicYear[]);
+          const active = (yearsRes.data as AcademicYear[]).find((y) => y.isActive);
+          if (active) setSelectedYear(active.id);
+        }
+        if (recordsRes.success && recordsRes.data) {
+          setRecords(recordsRes.data as SemesterRecord[]);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data");
+        setLoading(false);
+      });
+  }
 
-  async function createOrGetRecord() {
+  useEffect(() => { refresh(); }, [params.id]);
+
+  async function createOrGetRecord(): Promise<string | null> {
     const existing = records.find(
       (r) => r.academicYearId === selectedYear && r.semester === semester
     );
@@ -75,7 +88,7 @@ export default function SemesterRecordsPage() {
           absent: existing.attendance.absent,
         });
       }
-      return;
+      return existing.id;
     }
 
     const res = await api.post<SemesterRecord>(`/students/${params.id}/semester-records`, {
@@ -87,24 +100,42 @@ export default function SemesterRecordsPage() {
       const data = res.data as SemesterRecord;
       setRecordId(data.id);
       setRecords((prev) => [...prev, data]);
+      return data.id;
     }
+    return null;
   }
 
   async function saveAll(e: FormEvent) {
     e.preventDefault();
-    if (!recordId) await createOrGetRecord();
-    if (!recordId) {
-      toast.error("Gagal membuat record semester");
+
+    // Validate form before submit
+    const hasEmptyScore = scores.some(
+      (s) => s.knowledgeScore < 0 || s.knowledgeScore > 100 || s.skillsScore < 0 || s.skillsScore > 100
+    );
+    if (hasEmptyScore) {
+      toast.error("Nilai harus antara 0 - 100");
       return;
     }
-    setLoading(true);
+
+    // Resolve (or create) the record ID synchronously via return value
+    let currentRecordId = recordId;
+    setSaving(true);
 
     try {
+      if (!currentRecordId) {
+        currentRecordId = await createOrGetRecord();
+      }
+      if (!currentRecordId) {
+        toast.error("Gagal membuat record semester");
+        setSaving(false);
+        return;
+      }
+
       // Batch save all subject scores in one call
-      const scoresRes = await api.put(`/semester-records/${recordId}/subject-scores/batch`, { scores });
+      const scoresRes = await api.put(`/semester-records/${currentRecordId}/subject-scores/batch`, { scores });
       if (!scoresRes.success) throw new Error(scoresRes.error?.message || "Gagal menyimpan nilai");
 
-      const attRes = await api.put(`/semester-records/${recordId}/attendance`, attendance);
+      const attRes = await api.put(`/semester-records/${currentRecordId}/attendance`, attendance);
       if (!attRes.success) throw new Error(attRes.error?.message || "Gagal menyimpan kehadiran");
 
       toast.success("Data berhasil disimpan!");
@@ -112,11 +143,41 @@ export default function SemesterRecordsPage() {
       toast.error(err.message || "Gagal menyimpan data");
     }
 
-    setLoading(false);
+    setSaving(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={refresh}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
   }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      <div className="text-sm text-gray-500 mb-2 flex flex-wrap items-center gap-x-2">
+        <Link href="/students" className="hover:text-blue-600 transition-colors">Siswa</Link>
+        <span>/</span>
+        <Link href={`/students/${params.id}`} className="hover:text-blue-600 transition-colors">Detail</Link>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">Input Semester</span>
+      </div>
+
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={8} />
         <div className="relative p-6 bg-gradient-to-br from-white via-orange-50/30 rounded-2xl border border-orange-100/50">
@@ -174,7 +235,7 @@ export default function SemesterRecordsPage() {
             <AttendanceInput attendance={attendance} onChange={setAttendance} />
           </MagicCard>
 
-          <Button type="submit" loading={loading} className="w-full">
+          <Button type="submit" loading={saving} className="w-full">
             Simpan Semua Data
           </Button>
         </form>

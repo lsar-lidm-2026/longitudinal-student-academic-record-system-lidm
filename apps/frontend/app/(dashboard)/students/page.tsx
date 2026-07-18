@@ -12,16 +12,26 @@ import type { Student } from "@/types";
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    api.get<Student[]>("/students").then((res) => {
-      if (res.success && res.data) {
-        setStudents(res.data as Student[]);
-      }
-      setLoading(false);
-    });
-  }, []);
+  function refresh() {
+    setLoading(true);
+    setError(null);
+    api.get<Student[]>("/students")
+      .then((res) => {
+        if (res.success && res.data) {
+          setStudents(res.data as Student[]);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data siswa");
+        setLoading(false);
+      });
+  }
+
+  useEffect(() => { refresh(); }, []);
 
   const filtered = students.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase())
@@ -31,6 +41,20 @@ export default function StudentsPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={refresh}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
       </div>
     );
   }

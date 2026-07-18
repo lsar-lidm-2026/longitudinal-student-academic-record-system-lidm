@@ -25,6 +25,10 @@ export function ScoreInput({ scores, onChange }: ScoreInputProps) {
     onChange(newScores);
   }
 
+  function toNumber(val: string): number {
+    return val === "" ? 0 : Number(val);
+  }
+
   return (
     <div className="space-y-2">
       {SUBJECTS.map((subject, idx) => {
@@ -48,9 +52,9 @@ export function ScoreInput({ scores, onChange }: ScoreInputProps) {
                 type="number"
                 min="0"
                 max="100"
-                value={score.knowledgeScore || ""}
+                value={score.knowledgeScore}
                 onChange={(e) =>
-                  updateScore(scoreIdx >= 0 ? scoreIdx : idx, "knowledgeScore", Number(e.target.value))
+                  updateScore(scoreIdx >= 0 ? scoreIdx : idx, "knowledgeScore", toNumber(e.target.value))
                 }
                 placeholder="Pengetahuan"
                 className="w-24"
@@ -59,9 +63,9 @@ export function ScoreInput({ scores, onChange }: ScoreInputProps) {
                 type="number"
                 min="0"
                 max="100"
-                value={score.skillsScore || ""}
+                value={score.skillsScore}
                 onChange={(e) =>
-                  updateScore(scoreIdx >= 0 ? scoreIdx : idx, "skillsScore", Number(e.target.value))
+                  updateScore(scoreIdx >= 0 ? scoreIdx : idx, "skillsScore", toNumber(e.target.value))
                 }
                 placeholder="Keterampilan"
                 className="w-24"

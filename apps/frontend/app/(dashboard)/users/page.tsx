@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
+import { AuthGuard } from "@/components/layout/AuthGuard";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,15 +23,23 @@ const roleConfig: Record<Role, { variant: "info" | "success" | "warning" | "dang
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState({ username: "", password: "", name: "", role: "GURU" as Role });
 
   function load() {
-    api.get<User[]>("/users").then((res) => {
-      if (res.success && res.data) setUsers(res.data as User[]);
-      setLoading(false);
-    });
+    setLoading(true);
+    setError(null);
+    api.get<User[]>("/users")
+      .then((res) => {
+        if (res.success && res.data) setUsers(res.data as User[]);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data pengguna");
+        setLoading(false);
+      });
   }
 
   useEffect(() => { load(); }, []);
@@ -50,37 +59,45 @@ export default function UsersPage() {
   async function save(e: FormEvent) {
     e.preventDefault();
 
-    if (editingUser) {
-      const res = await api.put(`/users/${editingUser.id}`, {
-        name: form.name,
-        role: form.role,
-      });
-      if (res.success) {
-        toast.success("User berhasil diperbarui");
-        resetForm();
-        load();
+    try {
+      if (editingUser) {
+        const res = await api.put(`/users/${editingUser.id}`, {
+          name: form.name,
+          role: form.role,
+        });
+        if (res.success) {
+          toast.success("User berhasil diperbarui");
+          resetForm();
+          load();
+        } else {
+          toast.error(res.error?.message || "Gagal memperbarui user");
+        }
       } else {
-        toast.error(res.error?.message || "Gagal memperbarui user");
+        const res = await api.post("/auth/users", form);
+        if (res.success) {
+          toast.success("User berhasil dibuat");
+          resetForm();
+          load();
+        } else {
+          toast.error(res.error?.message || "Gagal membuat user");
+        }
       }
-    } else {
-      const res = await api.post("/auth/users", form);
-      if (res.success) {
-        toast.success("User berhasil dibuat");
-        resetForm();
-        load();
-      } else {
-        toast.error(res.error?.message || "Gagal membuat user");
-      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan user");
     }
   }
 
   async function toggleStatus(userId: string) {
-    const res = await api.patch(`/users/${userId}/status`);
-    if (res.success) {
-      toast.success("Status user berhasil diubah");
-      load();
-    } else {
-      toast.error(res.error?.message || "Gagal mengubah status");
+    try {
+      const res = await api.patch(`/users/${userId}/status`);
+      if (res.success) {
+        toast.success("Status user berhasil diubah");
+        load();
+      } else {
+        toast.error(res.error?.message || "Gagal mengubah status");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengubah status");
     }
   }
 
@@ -92,7 +109,22 @@ export default function UsersPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={load}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
   return (
+    <AuthGuard roles={["ADMINISTRATOR"]}>
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
@@ -226,5 +258,6 @@ export default function UsersPage() {
         </table>
       </MagicCard>
     </div>
+    </AuthGuard>
   );
 }

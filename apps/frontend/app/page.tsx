@@ -14,15 +14,25 @@ import type { DashboardSummary } from "@/types";
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.get<DashboardSummary>("/dashboard/summary").then((res) => {
-      if (res.success && res.data) {
-        setData(res.data as DashboardSummary);
-      }
-      setLoading(false);
-    });
-  }, []);
+  function refresh() {
+    setLoading(true);
+    setError(null);
+    api.get<DashboardSummary>("/dashboard/summary")
+      .then((res) => {
+        if (res.success && res.data) {
+          setData(res.data as DashboardSummary);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data dashboard");
+        setLoading(false);
+      });
+  }
+
+  useEffect(() => { refresh(); }, []);
 
   if (loading) {
     return (
@@ -32,10 +42,24 @@ export default function DashboardPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={refresh}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
   if (!data) {
     return (
       <div className="text-center py-12 text-gray-500">
-        Gagal memuat data dashboard
+        Tidak ada data dashboard
       </div>
     );
   }

@@ -7,7 +7,7 @@ Berikut adalah akun demo yang tersedia setelah menjalankan seeder database.
 | Username  | Password     | Role              | Keterangan                        |
 |-----------|--------------|-------------------|-----------------------------------|
 | admin     | admin123     | Administrator     | Kelola user, kelas, tahun ajaran  |
-| operator  | operator123  | Operator Sekolah  | Kelola data siswa                 |
+| operator  | guru123      | Operator Sekolah  | Kelola data siswa                 |
 | guru1     | guru123      | Guru              | Wali Kelas 5A                     |
 | guru2     | guru123      | Guru              | Wali Kelas 5B                     |
 | kepsek    | kepsek123    | Kepala Sekolah    | Monitoring (read-only)            |

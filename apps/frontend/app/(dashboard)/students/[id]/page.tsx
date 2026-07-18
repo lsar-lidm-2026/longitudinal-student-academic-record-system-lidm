@@ -17,15 +17,25 @@ export default function StudentDetailPage() {
   const params = useParams();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.get<StudentProfile>(`/students/${params.id}/profile`).then((res) => {
-      if (res.success && res.data) {
-        setProfile(res.data as StudentProfile);
-      }
-      setLoading(false);
-    });
-  }, [params.id]);
+  function refresh() {
+    setLoading(true);
+    setError(null);
+    api.get<StudentProfile>(`/students/${params.id}/profile`)
+      .then((res) => {
+        if (res.success && res.data) {
+          setProfile(res.data as StudentProfile);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Gagal memuat data siswa");
+        setLoading(false);
+      });
+  }
+
+  useEffect(() => { refresh(); }, [params.id]);
 
   if (loading) {
     return (
@@ -33,6 +43,20 @@ export default function StudentDetailPage() {
         <Skeleton className="h-12 w-64" />
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-red-500">
+        <p>{error}</p>
+        <button
+          onClick={refresh}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
       </div>
     );
   }
@@ -45,6 +69,13 @@ export default function StudentDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* Breadcrumb */}
+      <div className="text-sm text-gray-500 mb-2">
+        <Link href="/students" className="hover:text-blue-600 transition-colors">Siswa</Link>
+        <span className="mx-2">/</span>
+        <span className="text-gray-900 font-medium">{student.name}</span>
+      </div>
+
       {/* Header */}
       <div className="relative">
         <BorderBeam className="absolute inset-0 rounded-2xl" duration={8} />

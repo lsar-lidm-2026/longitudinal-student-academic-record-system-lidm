@@ -47,8 +47,9 @@ export default function LoginPage() {
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-xl font-bold mb-4 shadow-lg">
               L
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">LSAR</h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <h1 className="text-2xl font-bold text-gray-900">LSAR - Longitudinal Student Academic Record</h1>
+            <p className="text-xs text-gray-500 mt-1">
+              Bantu persiapkan administrasi Buku Induk dengan AI<br />
               Longitudinal Student Academic Record
             </p>
           </div>
