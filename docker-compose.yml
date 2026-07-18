@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: https://lidm-api.asepharyana.my.id/api
-    image: ghcr.io/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm/frontend:latest
+    image: ghcr.io/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm/frontend:${FRONTEND_TAG:-latest}
     container_name: lidm-frontend
     restart: always
     environment:
@@ -37,7 +37,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lidm-frontend.rule=Host(`lidm.asepharyana.my.id`)"
-      - "traefik.http.routers.lidm-frontend.entrypoints=websecure"
+      - "traefik.http.routers.lidm-frontend.entrypoints=web,websecure"
       - "traefik.http.routers.lidm-frontend.tls=true"
       - "traefik.http.services.lidm-frontend.loadbalancer.server.port=3000"
 
@@ -45,7 +45,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    image: ghcr.io/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm/backend:latest
+    image: ghcr.io/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm/backend:${BACKEND_TAG:-latest}
     container_name: lidm-backend
     restart: always
     environment:
