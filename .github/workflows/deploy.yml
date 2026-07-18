@@ -10,8 +10,11 @@ permissions:
   packages: write
 
 jobs:
-  build-and-deploy:
-    name: Build & Deploy
+  build:
+    name: Build ${{ matrix.service }}
+    strategy:
+      matrix:
+        service: [frontend, backend]
     runs-on: ubuntu-latest
 
     steps:
@@ -27,30 +30,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # ── Build & Push Frontend (sha tag) ──────────────────────────
-      - name: Build & Push Frontend
+      - name: Build & Push ${{ matrix.service }}
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.frontend
+          file: Dockerfile.${{ matrix.service }}
           push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:sha-${{ github.sha }}
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Build & Push Backend (sha tag) ───────────────────────────
-      - name: Build & Push Backend
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.backend
-          push: true
-          tags: ghcr.io/${{ github.repository }}/backend:sha-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+  deploy:
+    name: Deploy to VPS
+    needs: [build]
+    runs-on: ubuntu-latest
 
-      # ── Deploy to VPS ────────────────────────────────────────────
-      - name: Deploy to VPS
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Deploy
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -72,7 +70,6 @@ jobs:
 
           # Git pull on VPS
           ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" bash -c "
-            set -euo pipefail
             if [ -d $VPS_TARGET_DIR/.git ]; then
               cd $VPS_TARGET_DIR
               git remote set-url origin https://x-access-token:${GH_PAT}@github.com/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm.git
