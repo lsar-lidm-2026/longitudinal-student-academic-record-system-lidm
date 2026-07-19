@@ -47,23 +47,19 @@ import {
   Paperclip,
   Download,
   Loader2,
+  MessageSquare,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
-import type { AcademicYear, SemesterRecord, Achievement, HealthRecord } from "@/types";
+import { SUBJECTS } from "@/lib/constants";
+import type { AcademicYear, SemesterRecord, Achievement, HealthRecord, StudentNote } from "@/types";
 
-/** Daftar mata pelajaran tetap yang digunakan di form input nilai */
-const SUBJECTS = [
-  "Pendidikan Agama & Budi Pekerti",
-  "Pendidikan Pancasila & Kewarganegaraan",
-  "Bahasa Indonesia",
-  "Matematika",
-  "Ilmu Pengetahuan Alam",
-  "Ilmu Pengetahuan Sosial",
-  "Seni Budaya",
-  "PJOK",
-];
+/**
+ * Catatan: SUBJECTS diimpor dari lib/constants.ts.
+ * Nilai-nilai inilah yang digunakan sebagai subjectName saat
+ * submit nilai ke backend — harus konsisten dengan API.
+ */
 
 /** Opsi nilai 0-100 untuk dropdown select */
 const SCORE_OPTIONS = Array.from({ length: 101 }, (_, i) => i);
@@ -78,6 +74,47 @@ function getGrade(score: number): string {
   if (score >= 75) return "B";
   if (score >= 62) return "C";
   return "D";
+}
+
+/**
+ * getRelativeTime — Mengonversi timestamp ISO ke format relatif Bahasa Indonesia.
+ * Contoh: "Baru saja", "5 menit lalu", "3 jam lalu", "2 hari lalu".
+ * Untuk yang lebih dari 7 hari, tampilkan tanggal pendek (contoh: "12 Jul 2026").
+ * @param dateStr - String tanggal ISO
+ * @returns String waktu relatif
+ */
+function getRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "Baru saja";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} menit lalu`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} jam lalu`;
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 7) return `${diffDay} hari lalu`;
+  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * getCurrentUserId — Mendecode JWT access token untuk mendapatkan ID user yang login.
+ * Berguna untuk menentukan apakah catatan milik user sendiri (tampilkan tombol hapus).
+ * @returns ID user dari token, atau null jika token tidak tersedia / tidak valid
+ */
+function getCurrentUserId(): string | null {
+  const token = api.getToken();
+  if (!token) return null;
+  try {
+    // Decode payload JWT (bagian kedua setelah titik pertama)
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    // Coba baca dari field 'sub' atau 'id' — tergantung format token backend
+    return payload.sub || payload.id || null;
+  } catch {
+    logger.warn("getCurrentUserId", "Gagal mendecode JWT token");
+    return null;
+  }
 }
 
 /** Tipe data untuk input nilai per mata pelajaran di form */
@@ -169,6 +206,16 @@ export default function SemesterRecordsPage() {
   /** Indikator saving kesehatan */
   const [savingHealth, setSavingHealth] = useState(false);
 
+  // ── Notes state ──────────────────────────────────────────────────────
+  /** Daftar catatan guru untuk siswa ini */
+  const [notes, setNotes] = useState<StudentNote[]>([]);
+  /** Indikator loading catatan */
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  /** Konten catatan yang sedang diketik user */
+  const [noteContent, setNoteContent] = useState("");
+  /** Indikator saving catatan baru */
+  const [savingNote, setSavingNote] = useState(false);
+
   /**
    * refresh — Fungsi utama untuk memuat data awal halaman.
    * Mengambil academic years, semester records, dan profil siswa secara paralel.
@@ -210,6 +257,14 @@ export default function SemesterRecordsPage() {
     refresh();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
+
+  /** Fetch catatan guru setiap kali recordId berubah (tabs baru aktif) */
+  useEffect(() => {
+    if (recordId) {
+      fetchNotes();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordId]);
 
   /**
    * loadRecordData — Mengisi form state dengan data dari record semester yang sudah ada.
@@ -616,6 +671,86 @@ export default function SemesterRecordsPage() {
       toast.error(err.message || "Gagal menyimpan data kesehatan");
     } finally {
       setSavingHealth(false);
+    }
+  }
+
+  // ── Notes handlers ────────────────────────────────────────────────
+
+  /**
+   * fetchNotes — Mengambil daftar catatan guru untuk siswa ini dari API.
+   * Hasil diurutkan dari yang terbaru (berdasarkan createdAt descending).
+   * Dipanggil otomatis setiap kali recordId berubah (lihat useEffect).
+   */
+  async function fetchNotes() {
+    if (!params.id) return;
+    setLoadingNotes(true);
+    logger.info("CatatanTab", "Memuat catatan guru", { studentId: params.id });
+    try {
+      const data = await api.handleResponse<StudentNote[]>(
+        api.get(`/students/${params.id}/notes`)
+      );
+      // Urutkan dari yang terbaru (descending by createdAt)
+      const sorted = [...data].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setNotes(sorted);
+      logger.info("CatatanTab", "Catatan berhasil dimuat", { count: data.length });
+    } catch (err: any) {
+      logger.error("CatatanTab", "Gagal memuat catatan", { err });
+      toast.error(err.message || "Gagal memuat catatan");
+    } finally {
+      setLoadingNotes(false);
+    }
+  }
+
+  /**
+   * addNote — Menambahkan catatan baru untuk siswa ini.
+   * Mengirim konten ke POST /students/:id/notes, lalu menambahkan hasil
+   * response ke daftar lokal (di posisi paling atas = terbaru).
+   * @param e - Form submit event
+   */
+  async function addNote(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = noteContent.trim();
+    if (!trimmed || !params.id) return;
+    setSavingNote(true);
+    logger.info("CatatanTab", "Menambah catatan baru", { preview: trimmed.substring(0, 50) });
+    try {
+      const created = await api.handleResponse<StudentNote>(
+        api.post(`/students/${params.id}/notes`, { content: trimmed })
+      );
+      // Tambahkan ke awal array (posisi terbaru)
+      setNotes((prev) => [created, ...prev]);
+      setNoteContent(""); // Reset form
+      toast.success("Catatan berhasil ditambahkan");
+      logger.info("CatatanTab", "Catatan berhasil dibuat", { noteId: created.id });
+    } catch (err: any) {
+      logger.error("CatatanTab", "Gagal menambah catatan", { err });
+      toast.error(err.message || "Gagal menambah catatan");
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  /**
+   * deleteNote — Menghapus catatan guru berdasarkan ID via DELETE /teacher-notes/:id.
+   * Konfirmasi via confirm() sebelum eksekusi.
+   * @param noteId - ID catatan yang akan dihapus
+   */
+  async function deleteNote(noteId: string) {
+    if (!confirm("Hapus catatan ini?")) return;
+    logger.info("CatatanTab", "Menghapus catatan", { noteId });
+    try {
+      await api.handleResponse(
+        api.delete(`/teacher-notes/${noteId}`)
+      );
+      // Hapus dari daftar lokal
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      toast.success("Catatan berhasil dihapus");
+      logger.info("CatatanTab", "Catatan berhasil dihapus", { noteId });
+    } catch (err: any) {
+      logger.error("CatatanTab", "Gagal menghapus catatan", { err });
+      toast.error(err.message || "Gagal menghapus catatan");
     }
   }
 
@@ -1335,11 +1470,113 @@ export default function SemesterRecordsPage() {
             </form>
           </TabsContent>
 
-          {/* ── Tab: Catatan (Placeholder) ─────────────────────── */}
+          {/* ── Tab: Catatan ───────────────────────────────────── */}
           <TabsContent value="catatan">
-            <div className="bg-white rounded-xl border border-gray-100 p-5 text-center">
-              <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">Fitur catatan guru akan segera tersedia.</p>
+            <div className="space-y-4">
+              {/* ── Form tambah catatan ────────────────────────────── */}
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-500" />
+                    <h3 className="text-sm font-semibold text-gray-900">Catatan Guru</h3>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1 ml-6">
+                    Tambahkan catatan tentang perkembangan, sikap, atau hal penting lainnya.
+                  </p>
+                </div>
+                {/* Form textarea + tombol submit */}
+                <form onSubmit={addNote} className="p-5 space-y-3">
+                  <textarea
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    placeholder="Tulis catatan di sini..."
+                    rows={3}
+                    required
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all resize-none placeholder:text-gray-300"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={savingNote || !noteContent.trim()}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
+                    >
+                      {savingNote ? (
+                        <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                      ) : (
+                        <Plus className="w-3.5 h-3.5" />
+                      )}
+                      {savingNote ? "Menyimpan..." : "Tambah Catatan"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* ── Daftar catatan ─────────────────────────────────── */}
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-gray-400" />
+                  <h3 className="text-sm font-semibold text-gray-900">Riwayat Catatan</h3>
+                  <span className="px-2 py-0.5 text-[10px] bg-gray-100 text-gray-500 rounded-full font-medium">
+                    {notes.length} catatan
+                  </span>
+                </div>
+
+                {/* Loading state */}
+                {loadingNotes && (
+                  <div className="flex items-center justify-center py-10">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent" />
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {!loadingNotes && notes.length === 0 && (
+                  <div className="py-10 text-center">
+                    <MessageSquare className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Belum ada catatan guru untuk siswa ini.</p>
+                  </div>
+                )}
+
+                {/* Note list — newest first */}
+                {!loadingNotes && notes.length > 0 && (
+                  <div className="divide-y divide-gray-50">
+                    {notes.map((note) => {
+                      const currentUserId = getCurrentUserId();
+                      const isOwnNote = currentUserId !== null && note.createdById === currentUserId;
+                      return (
+                        <div key={note.id} className="p-5 hover:bg-gray-50/30 transition-colors">
+                          <div className="flex items-start justify-between gap-4">
+                            {/* Konten catatan */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                                {note.content}
+                              </p>
+                              {/* Meta: nama guru + timestamp */}
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                  {note.createdBy?.name || "Guru"}
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  {getRelativeTime(note.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+                            {/* Tombol hapus — hanya untuk catatan milik sendiri */}
+                            {isOwnNote && (
+                              <button
+                                onClick={() => deleteNote(note.id)}
+                                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                title="Hapus catatan"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </TabsContent>
         </Tabs>

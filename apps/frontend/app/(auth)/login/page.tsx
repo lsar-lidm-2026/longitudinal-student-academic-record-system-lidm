@@ -13,7 +13,7 @@
  *    e. Jika gagal: tampilkan pesan error dari response.
  * 4. Form terdiri dari input username, input password (dengan toggle show/hide),
  *    checkbox "remember me", tombol submit, dan error banner.
- * 5. Bagian bawah menampilkan tautan bantuan (SSO, Hubungi IT) dan footer.
+ *
  *
  * Alur:
  * - User membuka /login → halaman dirender dengan form kosong.
@@ -362,28 +362,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Divider dengan teks "Bantuan Akses" */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-white px-3 text-gray-400 uppercase tracking-wider font-medium">
-                Bantuan Akses
-              </span>
-            </div>
-          </div>
-
-          {/* Tombol alternatif: SSO dan Hubungi IT */}
-          <div className="grid grid-cols-2 gap-3">
-            <button className="h-10 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors font-medium flex items-center justify-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
-              Single Sign-On
-            </button>
-            <button className="h-10 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors font-medium">
-              Hubungi IT
-            </button>
-          </div>
         </div>
       </div>
 
@@ -409,17 +387,8 @@ export default function LoginPage() {
         <p className="text-xs text-blue-200/60">
           © 2024 LSAR. Dikembangkan untuk pendidik di Indonesia.
         </p>
-        <div className="flex items-center justify-center gap-4 mt-2">
-          <span className="text-[10px] text-blue-200/50 uppercase tracking-wider hover:text-blue-200/80 cursor-pointer transition-colors">
-            Kebijakan Privasi
-          </span>
-          <span className="text-[10px] text-blue-200/50 uppercase tracking-wider hover:text-blue-200/80 cursor-pointer transition-colors">
-            Syarat Ketentuan
-          </span>
-          <span className="text-[10px] text-blue-200/50 uppercase tracking-wider hover:text-blue-200/80 cursor-pointer transition-colors">
-            Panduan Guru
-          </span>
-        </div>
+        {/* Catatan: Tautan kebijakan (privasi, syarat, panduan) akan ditambahkan
+             setelah halaman-halaman tersebut tersedia. */}
       </div>
     </div>
   );

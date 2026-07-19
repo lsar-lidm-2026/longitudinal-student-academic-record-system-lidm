@@ -22,6 +22,7 @@
 "use client";
 
 import { logger } from "@/lib/logger";
+import { SUBJECTS } from "@/lib/constants";
 
 /** Tipe data satu baris nilai: nama mapel + nilai pengetahuan & keterampilan */
 export interface ScoreInputData {
@@ -38,17 +39,10 @@ interface ScoreInputProps {
   onChange: (scores: ScoreInputData[]) => void;
 }
 
-/** Daftar tetap mata pelajaran SD — 8 mapel sesuai kurikulum */
-const SUBJECTS = [
-  "Pendidikan Agama",
-  "Pendidikan Pancasila",
-  "Bahasa Indonesia",
-  "Matematika",
-  "IPA",
-  "IPS",
-  "Seni Budaya",
-  "PJOK",
-];
+/**
+ * Catatan: Daftar SUBJECTS diimpor dari lib/constants.ts.
+ * Jika ada perubahan daftar mapel, update di satu tempat saja.
+ */
 
 /**
  * ScoreInput — render input nilai Pengetahuan dan Keterampilan untuk semua mapel.

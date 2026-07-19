@@ -299,7 +299,11 @@ export function TopHeader({ user, breadcrumb }: TopHeaderProps) {
                 <div className="p-1.5 space-y-0.5">
                   <DropdownLink href="/settings" icon={User} label="Profil Saya" onClick={() => setIsProfileOpen(false)} />
                   <DropdownLink href="/settings" icon={Settings} label="Pengaturan" onClick={() => setIsProfileOpen(false)} />
-                  <DropdownLink href="#" icon={HelpCircle} label="Pusat Bantuan" onClick={() => setIsProfileOpen(false)} />
+                  {/* Pusat Bantuan: disabled span — tidak ada halaman bantuan di MVP */}
+                  <span className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-gray-300 cursor-not-allowed font-medium select-none">
+                    <HelpCircle className="w-4 h-4 text-gray-300" />
+                    Pusat Bantuan
+                  </span>
                 </div>
                 <div className="border-t border-gray-50 p-1.5 mt-1.5">
                   <button

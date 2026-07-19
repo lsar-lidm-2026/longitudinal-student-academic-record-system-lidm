@@ -33,7 +33,7 @@ import type { User, Role } from "@/types";
 const roleConfig: Record<Role, { color: string; label: string }> = {
   ADMINISTRATOR: { color: "bg-red-50 text-red-600 border-red-100", label: "Admin" },
   OPERATOR_SEKOLAH: { color: "bg-amber-50 text-amber-600 border-amber-100", label: "Operator" },
-  GURU: { color: "bg-blue-50 text-blue-600 border-blue-100", label: "Guru" },
+  GURU: { color: "bg-blue-50 text-blue-600 border-blue-100", label: "Wali Kelas" },
   KEPALA_SEKOLAH: { color: "bg-emerald-50 text-emerald-600 border-emerald-100", label: "Kepsek" },
 };
 
