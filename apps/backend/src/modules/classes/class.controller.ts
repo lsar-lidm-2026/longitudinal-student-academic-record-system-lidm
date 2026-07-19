@@ -31,8 +31,8 @@ export const classController = new Elysia({ prefix: "/classes" })
   .use(requireAuth)
   // ── GET /classes ───────────────────────────────────────────────────────────
   .get("/", async ({ user, query }) => {
-    // ADMIN, OPERATOR, KEPSEK bisa melihat daftar kelas
-    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH");
+    // ADMIN, OPERATOR, KEPSEK, GURU bisa melihat daftar kelas
+    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH", "GURU");
     logger.info({ requesterId: user.userId, all: query.all, yearId: query.yearId }, "List all classes");
     const data = await service.list(query.all === "true", query.yearId);
     return success(data);

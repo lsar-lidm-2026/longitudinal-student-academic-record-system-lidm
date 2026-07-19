@@ -30,8 +30,8 @@ export const usersController = new Elysia({ prefix: "/users" })
   .use(requireAuth)
   // ── GET /users ─────────────────────────────────────────────────────────────
   .get("/", async ({ user }) => {
-    // Diperbolehkan untuk ADMINISTRATOR, OPERATOR_SEKOLAH, GURU, KEPALA_SEKOLAH
-    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH");
+    // Hanya ADMINISTRATOR yang bisa melihat daftar user (data sensitif — username, role, status)
+    checkRole(user, "ADMINISTRATOR");
     logger.info({ requesterId: user.userId }, "List all users");
     const data = await authService.listUsers();
     return success(data);
@@ -73,9 +73,18 @@ export const usersController = new Elysia({ prefix: "/users" })
   .put(
     "/:id",
     async ({ params, body, user }) => {
-      // Hanya ADMINISTRATOR yang bisa mengupdate user
-      checkRole(user, "ADMINISTRATOR");
-      logger.info({ requesterId: user.userId, targetUserId: params.id, updates: body }, "Update user");
+      // Admin bisa update user APAPUN (name, role, isActive, password)
+      // Non-admin hanya bisa update DIRI SENDIRI (name, password) — role/isActive tetap admin-only
+      if (user.userId !== params.id) {
+        // Bukan diri sendiri — harus ADMIN
+        checkRole(user, "ADMINISTRATOR");
+      } else {
+        // Update diri sendiri — hanya name dan password yang boleh, role/isActive diabaikan
+        if (body.role || body.isActive !== undefined) {
+          throw new ValidationError("Anda tidak dapat mengubah role atau status akun sendiri");
+        }
+      }
+      logger.info({ requesterId: user.userId, targetUserId: params.id }, "Update user");
       const data = await authService.updateUser(params.id, body);
       return success(data);
     },

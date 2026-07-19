@@ -31,7 +31,7 @@ export const academicYearController = new Elysia({ prefix: "/academic-years" })
   .use(requireAuth)
   // ── GET /academic-years ────────────────────────────────────────────────────
   .get("/", async ({ user }) => {
-    // Beberapa role bisa melihat daftar tahun ajaran
+    // Semua role boleh melihat daftar tahun ajaran — data ini digunakan di dropdown filter halaman lain (classes, semester records)
     checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH", "GURU");
     logger.info({ requesterId: user.userId }, "List all academic years");
     const data = await service.list();

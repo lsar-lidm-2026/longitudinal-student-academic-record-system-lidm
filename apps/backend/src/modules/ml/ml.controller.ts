@@ -113,22 +113,24 @@ export const mlController = new Elysia({ prefix: "/ml" })
       })
   )
 
-  // ── Guard 3: Endpoint publik-autentikasi lainnya ──
+  // ── Guard 3: Endpoint untuk akses umum terautentikasi (ADMIN, GURU, KEPSEK) ──
   .guard({}, (app) =>
     app
       .use(requireAuth)
 
       // GET /risk/class/:id — Agregasi risk assessment untuk satu kelas
-      .get("/risk/class/:id", async ({ params }) => {
+      .get("/risk/class/:id", async ({ params, user }) => {
         logger.info({ classId: params.id }, "GET /ml/risk/class/:id called");
+        checkRole(user, "ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH");
         const data = await mlService.getClassRisk(params.id);
         logger.info({ classId: params.id }, "GET /ml/risk/class/:id completed");
         return success(data);
       })
 
       // GET /cluster/class/:id — Clustering siswa dalam satu kelas
-      .get("/cluster/class/:id", async ({ params }) => {
+      .get("/cluster/class/:id", async ({ params, user }) => {
         logger.info({ classId: params.id }, "GET /ml/cluster/class/:id called");
+        checkRole(user, "ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH");
         const data = await mlService.getClassCluster(params.id);
         logger.info({ classId: params.id }, "GET /ml/cluster/class/:id completed");
         return success(data);

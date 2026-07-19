@@ -47,6 +47,7 @@ import * as service from "./semester-record.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { requireHomeroomAccess } from "../../middleware/homeroom";
+import { checkRole } from "../../middleware/role";
 import logger from "../../lib/logger";
 
 /**
@@ -112,9 +113,10 @@ export const semesterRecordController = new Elysia({ prefix: "/students" })
           }),
         }
       )
-      // DELETE /students/:id/semester-records/:recordId — delete record + all related data
+      // DELETE /students/:id/semester-records/:recordId — delete record + all related data (hanya ADMIN/OPERATOR)
       .delete("/:id/semester-records/:recordId", async ({ params, user }) => {
         logger.info({ userId: user.userId, recordId: params.recordId }, "Deleting semester record");
+        checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH");
         // Cascading delete handled inside service via Prisma transaction
         await service.deleteRecord(params.recordId);
         logger.info({ recordId: params.recordId }, "Semester record deleted");
