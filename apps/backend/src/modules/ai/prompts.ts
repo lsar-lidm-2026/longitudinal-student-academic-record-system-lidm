@@ -38,12 +38,14 @@ interface StudentData {
   semester: number;
   /** Tahun ajaran (misal: "2025/2026") */
   academicYear: string;
-  /** Array nilai per mata pelajaran */
-  subjectScores: { subjectName: string; knowledgeScore: number; skillsScore: number }[];
+  /** Array nilai per mata pelajaran — termasuk catatan per mapel jika ada */
+  subjectScores: { subjectName: string; knowledgeScore: number; skillsScore: number; notes?: string | null }[];
   /** Data kehadiran (sakit, izin, alpha) — bisa null jika belum diisi */
   attendance: { sick: number; permission: number; absent: number } | null;
   /** Array prestasi siswa */
   achievements: { title: string; type: string }[];
+  /** Catatan guru terbaru (opsional) — FR-11 minta catatan guru sebagai konteks AI */
+  teacherNote?: string | null;
 }
 
 /**
@@ -70,13 +72,16 @@ Kelas: ${data.className}
 Semester: ${data.semester === 1 ? "Ganjil" : "Genap"} - ${data.academicYear}
 
 Nilai:
-${data.subjectScores.map((s) => `- ${s.subjectName}: Pengetahuan ${s.knowledgeScore}, Keterampilan ${s.skillsScore}`).join("\n")}
+${data.subjectScores.map((s) => `- ${s.subjectName}: Pengetahuan ${s.knowledgeScore}, Keterampilan ${s.skillsScore}${s.notes ? `. Catatan: ${s.notes}` : ""}`).join("\n")}
 
 Kehadiran:
 ${data.attendance ? `- Sakit: ${data.attendance.sick} hari\n- Izin: ${data.attendance.permission} hari\n- Alpha: ${data.attendance.absent} hari` : "Tidak ada data kehadiran"}
 
 Prestasi:
-${data.achievements.length > 0 ? data.achievements.map((a) => `- ${a.title} (${a.type})`).join("\n") : "Tidak ada prestasi"}`
+${data.achievements.length > 0 ? data.achievements.map((a) => `- ${a.title} (${a.type})`).join("\n") : "Tidak ada prestasi"}
+
+Catatan Guru:
+${data.teacherNote || "Tidak ada catatan guru"}`
 ;
 }
 
@@ -105,7 +110,10 @@ Kelas: ${data.className}
 Semester: ${data.semester === 1 ? "Ganjil" : "Genap"}
 
 Nilai:
-${data.subjectScores.map((s) => `- ${s.subjectName}: Pengetahuan ${s.knowledgeScore}, Keterampilan ${s.skillsScore}`).join("\n")}
+${data.subjectScores.map((s) => `- ${s.subjectName}: Pengetahuan ${s.knowledgeScore}, Keterampilan ${s.skillsScore}${s.notes ? `. Catatan: ${s.notes}` : ""}`).join("\n")}
+
+Catatan Guru:
+${data.teacherNote || "Tidak ada catatan guru"}
 
 Format Output:
 **{Mata Pelajaran}**: [deskripsi narasi 2-3 kalimat]`;
@@ -124,7 +132,7 @@ export function buildTransitionSummaryPrompt(allSemesters: StudentData[]): strin
 
   // Format riwayat per semester menjadi teks terstruktur
   const semesterData = allSemesters.map(
-    (s) => `Semester ${s.semester === 1 ? "Ganjil" : "Genap"} ${s.academicYear}:
+    (s) => `Semester ${s.semester === 1 ? "Ganjil" : "Genap"} ${s.academicYear} — Kelas ${s.className || "?"}:
 Nilai: ${s.subjectScores.map((sc) => `${sc.subjectName}=${sc.knowledgeScore}/${sc.skillsScore}`).join(", ")}
 Kehadiran: ${s.attendance ? `S:${s.attendance.sick} I:${s.attendance.permission} A:${s.attendance.absent}` : "N/A"}
 Prestasi: ${s.achievements.map((a) => a.title).join(", ") || "Tidak ada"}`
@@ -141,6 +149,9 @@ Ringkasan harus:
 Nama: ${allSemesters[0]?.name || "-"}
 Riwayat Semester:
 ${semesterData}
+
+Catatan Guru Selama Belajar:
+${allSemesters[0]?.teacherNote || "Tidak ada catatan guru"}
 
 Format Output:
 1. Profil Singkat: [1 paragraf]

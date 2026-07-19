@@ -66,9 +66,16 @@ async function getStudentAcademicData(studentId: string) {
     },
     orderBy: [{ academicYear: { year: "asc" } }, { semester: "asc" }],
   });
-
+ 
+  // Ambil catatan guru terbaru sebagai konteks AI (FR-11: catatan guru sebagai input AI)
+  const latestNote = await prisma.teacherNote.findFirst({
+    where: { studentId },
+    orderBy: { createdAt: "desc" },
+    select: { content: true },
+  });
+ 
   logger.debug({ studentId, semesterCount: semesterRecords.length }, "getStudentAcademicData — semester records fetched");
-  return { student, semesterRecords };
+  return { student, semesterRecords, latestTeacherNote: latestNote?.content || null };
 }
 
 // ── Local fallback generators (digunakan jika LLM unreachable / error) ─────────
@@ -180,8 +187,8 @@ function generateMockTransitionSummary(allData: any[]): string {
 export async function generateStudentSummary(studentId: string) {
   logger.info({ studentId }, "generateStudentSummary — start");
 
-  // Ambil data akademik lengkap siswa
-  const { student, semesterRecords } = await getStudentAcademicData(studentId);
+  // Ambil data akademik lengkap siswa (termasuk catatan guru terbaru)
+  const { student, semesterRecords, latestTeacherNote } = await getStudentAcademicData(studentId);
   // Hanya gunakan semester record terakhir (paling baru)
   const latest = semesterRecords[semesterRecords.length - 1];
   if (!latest) {
@@ -189,22 +196,25 @@ export async function generateStudentSummary(studentId: string) {
     throw new NotFoundError("No semester records found");
   }
 
-  // Bentuk objek data untuk prompt
+  // Bentuk objek data untuk prompt (FR-11: include catatan guru + notes per mapel)
   const data = {
     name: student.name,
     className: student.class.name,
     semester: latest.semester,
     academicYear: latest.academicYear.year,
-    // Peta nilai per mapel
+    // Peta nilai per mapel — termasuk catatan individu jika ada
     subjectScores: latest.subjectScores.map((s) => ({
       subjectName: s.subjectName,
       knowledgeScore: s.knowledgeScore,
       skillsScore: s.skillsScore,
+      notes: s.notes,
     })),
     attendance: latest.attendance
       ? { sick: latest.attendance.sick, permission: latest.attendance.permission, absent: latest.attendance.absent }
       : null,
     achievements: latest.achievements.map((a) => ({ title: a.title, type: a.type })),
+    // Catatan guru terbaru sebagai konteks tambahan untuk LLM
+    teacherNote: latestTeacherNote,
   };
 
   // Bangun prompt sesuai template student summary
@@ -259,8 +269,8 @@ export async function generateStudentSummary(studentId: string) {
 export async function generateDraftDescription(studentId: string) {
   logger.info({ studentId }, "generateDraftDescription — start");
 
-  // Ambil data akademik lengkap siswa
-  const { student, semesterRecords } = await getStudentAcademicData(studentId);
+  // Ambil data akademik lengkap siswa (termasuk catatan guru terbaru)
+  const { student, semesterRecords, latestTeacherNote } = await getStudentAcademicData(studentId);
   // Hanya gunakan semester record terakhir
   const latest = semesterRecords[semesterRecords.length - 1];
   if (!latest) {
@@ -268,7 +278,7 @@ export async function generateDraftDescription(studentId: string) {
     throw new NotFoundError("No semester records found");
   }
 
-  // Bentuk objek data untuk prompt
+  // Bentuk objek data untuk prompt (FR-12: include notes per mapel + catatan guru)
   const data = {
     name: student.name,
     className: student.class.name,
@@ -278,11 +288,14 @@ export async function generateDraftDescription(studentId: string) {
       subjectName: s.subjectName,
       knowledgeScore: s.knowledgeScore,
       skillsScore: s.skillsScore,
+      notes: s.notes,
     })),
     attendance: latest.attendance
       ? { sick: latest.attendance.sick, permission: latest.attendance.permission, absent: latest.attendance.absent }
       : null,
     achievements: latest.achievements.map((a) => ({ title: a.title, type: a.type })),
+    // Catatan guru sebagai konteks untuk deskripsi rapor yang lebih personal
+    teacherNote: latestTeacherNote,
   };
 
   // Bangun prompt sesuai template draft description
@@ -334,28 +347,33 @@ export async function generateDraftDescription(studentId: string) {
 async function generateSingleTransitionSummary(studentId: string) {
   logger.debug({ studentId }, "generateSingleTransitionSummary — start");
 
-  // Ambil data akademik lengkap siswa
-  const { student: s, semesterRecords } = await getStudentAcademicData(studentId);
+  // Ambil data akademik lengkap siswa (dengan catatan guru terbaru)
+  const { student: s, semesterRecords, latestTeacherNote } = await getStudentAcademicData(studentId);
   if (semesterRecords.length === 0) {
     logger.warn({ studentId }, "generateSingleTransitionSummary — no semester records, skipping");
     return null;
   }
 
   // Bentuk array data seluruh semester untuk prompt transisi
+  // FR-13: include class name per semester untuk grade history + teacher notes
   const allData = semesterRecords.map((r) => ({
     name: s.name,
-    className: "",
+    // Gunakan nama kelas terkini — idealnya setiap semesterRecord punya classId sendiri
+    className: s.class?.name || "",
     semester: r.semester,
     academicYear: r.academicYear.year,
     subjectScores: r.subjectScores.map((sc) => ({
       subjectName: sc.subjectName,
       knowledgeScore: sc.knowledgeScore,
       skillsScore: sc.skillsScore,
+      notes: sc.notes,
     })),
     attendance: r.attendance
       ? { sick: r.attendance.sick, permission: r.attendance.permission, absent: r.attendance.absent }
       : null,
     achievements: r.achievements.map((a) => ({ title: a.title, type: a.type })),
+    // Catatan guru terbaru sebagai konteks untuk wali kelas baru
+    teacherNote: latestTeacherNote,
   }));
 
   // Bangun prompt transisi dengan data seluruh semester
