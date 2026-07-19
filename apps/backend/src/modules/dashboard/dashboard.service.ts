@@ -70,7 +70,7 @@ export async function getSummary(userId: string, role: Role) {
     const managedClasses = activeYear
       ? await prisma.class.findMany({
           where: { homeroomTeacherId: userId, academicYearId: activeYear.id },
-          select: { id: true, name: true },
+          select: { id: true, name: true, _count: { select: { students: true } } },
         })
       : [];
 
