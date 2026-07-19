@@ -26,7 +26,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
-import { Users, Plus, Pencil, X, Power, PowerOff, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Users, Plus, Pencil, X, Power, PowerOff, ShieldCheck, Eye, EyeOff, Trash2 } from "lucide-react";
 import type { User, Role } from "@/types";
 
 /** Konfigurasi tampilan untuk setiap role — warna badge dan label */
@@ -166,6 +166,22 @@ export default function UsersPage() {
     }
   }
 
+  /**
+   * handleDeleteUser — Menghapus pengguna.
+   * @param userId - ID user yang akan dihapus
+   * @param username - Username untuk dikonfirmasi
+   */
+  async function handleDeleteUser(userId: string, username: string) {
+    if (!confirm(`Hapus pengguna "${username}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+    try {
+      await api.handleResponse(api.delete(`/users/${userId}`));
+      toast.success(`Pengguna "${username}" berhasil dihapus`);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus pengguna");
+    }
+  }
+
   // ── Loading State ──────────────────────────────────────────────────
   if (loading) {
     return (
@@ -277,6 +293,13 @@ export default function UsersPage() {
                           }`}
                         >
                           {user.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(user.id, user.username)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Hapus pengguna"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>

@@ -22,6 +22,8 @@ import * as service from "./academic-year.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { checkRole } from "../../middleware/role";
+import { prisma } from "../../lib/prisma";
+import { NotFoundError, ValidationError } from "../../common/error";
 import logger from "../../lib/logger";
 
 export const academicYearController = new Elysia({ prefix: "/academic-years" })
@@ -80,4 +82,16 @@ export const academicYearController = new Elysia({ prefix: "/academic-years" })
     logger.info({ requesterId: user.userId, id: params.id }, "Archive academic year");
     const data = await service.archive(params.id);
     return success(data);
+  })
+  // ── DELETE /academic-years/:id ─────────────────────────────────────────────
+  .delete("/:id", async ({ params, user }) => {
+    // Hanya ADMINISTRATOR yang bisa menghapus tahun ajaran
+    checkRole(user, "ADMINISTRATOR");
+    logger.warn({ requesterId: user.userId, yearId: params.id }, "DELETE /academic-years/:id called");
+    const year = await prisma.academicYear.findUnique({ where: { id: params.id } });
+    if (!year) throw new NotFoundError("Tahun ajaran tidak ditemukan");
+    if (year.isActive) throw new ValidationError("Tidak dapat menghapus tahun ajaran yang sedang aktif");
+    if (year.isArchived) throw new ValidationError("Tidak dapat menghapus tahun ajaran yang sudah diarsipkan");
+    await prisma.academicYear.delete({ where: { id: params.id } });
+    return success({ message: "Tahun ajaran berhasil dihapus" });
   });

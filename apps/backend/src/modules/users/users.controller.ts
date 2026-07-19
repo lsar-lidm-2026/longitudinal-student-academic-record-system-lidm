@@ -21,6 +21,8 @@ import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { checkRole } from "../../middleware/role";
 import * as authService from "../auth/auth.service";
+import { prisma } from "../../lib/prisma";
+import { NotFoundError, ValidationError } from "../../common/error";
 import logger from "../../lib/logger";
 
 export const usersController = new Elysia({ prefix: "/users" })
@@ -101,4 +103,17 @@ export const usersController = new Elysia({ prefix: "/users" })
     logger.info({ requesterId: user.userId, targetUserId: params.id }, "Toggle user status");
     const data = await authService.toggleUserStatus(params.id);
     return success(data);
+  })
+  // ── DELETE /users/:id ──────────────────────────────────────────────────────
+  .delete("/:id", async ({ params, user }) => {
+    // Hanya ADMINISTRATOR yang bisa menghapus user
+    checkRole(user, "ADMINISTRATOR");
+    logger.warn({ requesterId: user.userId, targetUserId: params.id }, "DELETE /users/:id called");
+    const existing = await prisma.user.findUnique({ where: { id: params.id } });
+    if (!existing) throw new NotFoundError("User tidak ditemukan");
+    if (existing.role === "ADMINISTRATOR") {
+      throw new ValidationError("Tidak dapat menghapus akun Administrator utama");
+    }
+    await prisma.user.delete({ where: { id: params.id } });
+    return success({ message: "User berhasil dihapus" });
   });

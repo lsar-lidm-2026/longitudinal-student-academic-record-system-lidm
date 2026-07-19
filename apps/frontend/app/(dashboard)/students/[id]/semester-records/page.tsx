@@ -236,8 +236,10 @@ export default function SemesterRecordsPage() {
       api.handleResponse(api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`)),
       // Profile fetch non-critical: catch error agar tidak mengganggu data lain
       api.handleResponse(api.get<any>(`/students/${params.id}/profile`)).catch(() => null),
+      // Auth/me untuk role check
+      api.get<{ id: string; username: string; name: string; role: string; isActive: boolean }>("/auth/me").catch(() => null),
     ])
-      .then(([yearsData, recordsData, profileData]) => {
+      .then(([yearsData, recordsData, profileData, meRes]) => {
         setAcademicYears(yearsData);
         // Set tahun ajaran aktif sebagai default
         const active = yearsData.find((y) => y.isActive);
@@ -245,6 +247,9 @@ export default function SemesterRecordsPage() {
         setRecords(recordsData);
         if (profileData?.student?.name) {
           setStudentName(profileData.student.name);
+        }
+        if (meRes?.success && meRes.data) {
+          setCurrentUserRole(meRes.data.role);
         }
         logger.info("SemesterRecordsPage", "Data awal berhasil dimuat", {
           yearsCount: yearsData.length,
@@ -790,6 +795,75 @@ export default function SemesterRecordsPage() {
     }
   }
 
+  /**
+   * handleDeleteRecord — Menghapus data semester record beserta semua data terkait.
+   */
+  async function handleDeleteRecord() {
+    if (!recordId) return;
+    const rec = records.find((r) => r.id === recordId);
+    if (!confirm(`Hapus data semester ${rec?.academicYear?.year || "?"} S${rec?.semester || "?"}? Semua nilai dan data terkait akan ikut terhapus.`)) return;
+    try {
+      await api.handleResponse(api.delete(`/students/${params.id}/semester-records/${recordId}`));
+      toast.success("Data semester berhasil dihapus");
+      setRecordId(null);
+      refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus data semester");
+    }
+  }
+
+  /**
+   * handleClearAttendance — Menghapus data kehadiran semester ini.
+   */
+  async function handleClearAttendance() {
+    if (!recordId) return;
+    if (!confirm("Hapus data kehadiran semester ini?")) return;
+    try {
+      await api.handleResponse(api.delete(`/semester-records/${recordId}/attendance`));
+      toast.success("Data kehadiran berhasil dihapus");
+      // Reset attendance state
+      setAttendance({ sick: 0, permission: 0, absent: 0 });
+      // Update records state to reflect cleared attendance
+      setRecords((prev) =>
+        prev.map((r) => (r.id === recordId ? { ...r, attendance: null } : r))
+      );
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus data kehadiran");
+    }
+  }
+
+  /**
+   * handleClearHealth — Menghapus data kesehatan semester ini.
+   */
+  async function handleClearHealth() {
+    if (!confirm("Hapus data kesehatan semester ini?")) return;
+    try {
+      await api.handleResponse(api.delete(`/semester-records/${recordId}/health-record`));
+      toast.success("Data kesehatan berhasil dihapus");
+      setHealthRecord(null);
+      setHealthForm(emptyHealthForm());
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus data kesehatan");
+    }
+  }
+
+  /**
+   * handleEditNote — Mengedit catatan guru.
+   * @param noteId - ID catatan
+   * @param currentContent - Konten saat ini
+   */
+  async function handleEditNote(noteId: string, currentContent: string) {
+    const newContent = prompt("Edit catatan:", currentContent);
+    if (!newContent || newContent.trim() === "" || newContent === currentContent) return;
+    try {
+      await api.handleResponse(api.put(`/teacher-notes/${noteId}`, { content: newContent.trim() }));
+      toast.success("Catatan berhasil diperbarui");
+      fetchNotes();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memperbarui catatan");
+    }
+  }
+
   /** Auto-save on blur — panggil saveDevDescription jika ada recordId */
   async function handleBlurSave() {
     if (recordId) {
@@ -797,8 +871,14 @@ export default function SemesterRecordsPage() {
     }
   }
 
+  /** Role user yang sedang login (dari /auth/me) */
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
   /** Tahun ajaran yang sedang dipilih (untuk ditampilkan di header) */
   const activeYear = academicYears.find((y) => y.id === selectedYear);
+
+  /** Record semester yang aktif (dari array records berdasarkan recordId) */
+  const activeRecord = records.find((r) => r.id === recordId) || null;
 
   // ── Loading State ──────────────────────────────────────────────────
   if (loading) {
@@ -894,17 +974,29 @@ export default function SemesterRecordsPage() {
             </select>
           </div>
           {/* Tombol Buat/Muat Record — berubah hijau jika sudah ada recordId */}
-          <button
-            onClick={createOrGetRecord}
-            disabled={saving}
-            className={`h-10 px-4 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${
-              recordId
-                ? "bg-green-50 text-green-600 border border-green-200"
-                : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
-            }`}
-          >
-            {recordId ? "✓ Record Siap" : "Buat / Muat Record"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={createOrGetRecord}
+              disabled={saving}
+              className={`h-10 px-4 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${
+                recordId
+                  ? "bg-green-50 text-green-600 border border-green-200"
+                  : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+              }`}
+            >
+              {recordId ? "✓ Record Siap" : "Buat / Muat Record"}
+            </button>
+            {/* Tombol Hapus Record — hanya untuk admin/operator dan jika record sudah ada */}
+            {(currentUserRole === "ADMINISTRATOR" || currentUserRole === "OPERATOR_SEKOLAH") && recordId && (
+              <button
+                onClick={handleDeleteRecord}
+                className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                title="Hapus data semester"
+              >
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1125,7 +1217,18 @@ export default function SemesterRecordsPage() {
                   })}
                 </div>
                 {/* Tombol simpan — juga menyimpan nilai (saveAll) */}
-                <div className="flex justify-end mt-4">
+                <div className="flex justify-between items-center mt-4">
+                  {/* Tombol Hapus data kehadiran — hanya muncul jika sudah ada data */}
+                  {activeRecord?.attendance && (
+                    <button
+                      type="button"
+                      onClick={handleClearAttendance}
+                      className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                    >
+                      Hapus data kehadiran
+                    </button>
+                  )}
+                  <div className="flex-1" />
                   <button
                     type="submit"
                     disabled={saving}
@@ -1497,8 +1600,19 @@ export default function SemesterRecordsPage() {
                   </div>
                 </div>
 
-                {/* Tombol simpan data kesehatan */}
-                <div className="flex justify-end mt-5 pt-4 border-t border-gray-100">
+                {/* Tombol simpan data kesehatan + hapus */}
+                <div className="flex justify-between items-center mt-5 pt-4 border-t border-gray-100">
+                  {/* Tombol Hapus data kesehatan — hanya muncul jika sudah ada data */}
+                  {healthRecord && (
+                    <button
+                      type="button"
+                      onClick={handleClearHealth}
+                      className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                    >
+                      Hapus data kesehatan
+                    </button>
+                  )}
+                  <div className="flex-1" />
                   <button
                     type="submit"
                     disabled={savingHealth}
@@ -1606,15 +1720,24 @@ export default function SemesterRecordsPage() {
                                 </span>
                               </div>
                             </div>
-                            {/* Tombol hapus — hanya untuk catatan milik sendiri */}
+                            {/* Tombol edit & hapus — hanya untuk catatan milik sendiri */}
                             {isOwnNote && (
-                              <button
-                                onClick={() => deleteNote(note.id)}
-                                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                                title="Hapus catatan"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleEditNote(note.id, note.content)}
+                                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-colors"
+                                  title="Edit catatan"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => deleteNote(note.id)}
+                                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                  title="Hapus catatan"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>

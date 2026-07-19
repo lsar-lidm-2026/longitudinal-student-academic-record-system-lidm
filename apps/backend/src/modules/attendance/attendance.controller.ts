@@ -23,6 +23,8 @@ import * as service from "./attendance.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { requireRecordOwner } from "../../middleware/record-owner";
+import { prisma } from "../../lib/prisma";
+import { NotFoundError } from "../../common/error";
 
 /**
  * attendanceController — Elysia route group untuk prefix /semester-records.
@@ -55,4 +57,14 @@ export const attendanceController = new Elysia({ prefix: "/semester-records" })
           }),
         }
       )
+      // ── DELETE /semester-records/:id/attendance — Hapus data kehadiran ────
+      .delete("/:id/attendance", async ({ params }) => {
+        logger.info({ recordId: params.id }, "DELETE attendance");
+        const existing = await prisma.attendance.findUnique({
+          where: { semesterRecordId: params.id },
+        });
+        if (!existing) throw new NotFoundError("Data kehadiran tidak ditemukan");
+        await prisma.attendance.delete({ where: { semesterRecordId: params.id } });
+        return success({ message: "Data kehadiran berhasil dihapus" });
+      })
   );

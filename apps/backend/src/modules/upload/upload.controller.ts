@@ -27,7 +27,7 @@
 import { Elysia, t } from "elysia";               // Elysia web framework + validation
 import { requireAuth } from "../../middleware/auth"; // JWT auth middleware
 import { success, error as errorResponse } from "../../common/response"; // Standar response formatter
-import { ValidationError } from "../../common/error";
+import { NotFoundError, ValidationError } from "../../common/error";
 import {
   uploadStudentPhoto,
   uploadAchievementAttachment,
@@ -38,6 +38,7 @@ import type { JwtPayload } from "../../common/types"; // JWT payload type defini
 import logger from "../../lib/logger";              // Pino logger instance
 import fs from "fs/promises";                      // File system operations
 import { env } from "../../config/env";             // Environment configuration
+import { prisma } from "../../lib/prisma";          // Prisma client for DB queries
 
 /**
  * UploadController — instance Elysia dengan prefix "/upload".
@@ -306,5 +307,34 @@ export const uploadController = new Elysia({ prefix: "/upload" })
     {
       // Validasi parameter path menggunakan Elysia t.Object
       params: t.Object({ id: t.String() }),
+    }
+  )
+
+  // ── Update Student Document ──────────────────────────────────────
+  /**
+   * PUT /upload/documents/:id
+   *
+   * Memperbarui nama dokumen siswa.
+   *
+   * @param params.id - UUID dokumen (StudentDocument)
+   * @param body.name - Nama dokumen yang baru
+   * @returns         - StudentDocument yang sudah diupdate
+   */
+  .put(
+    "/documents/:id",
+    async ({ params, body }) => {
+      logger.info({ documentId: params.id, newName: body.name }, "PUT document");
+      const doc = await prisma.studentDocument.findUnique({ where: { id: params.id } });
+      if (!doc) throw new NotFoundError("Dokumen tidak ditemukan");
+      const updated = await prisma.studentDocument.update({
+        where: { id: params.id },
+        data: { name: body.name },
+      });
+      return success(updated);
+    },
+    {
+      body: t.Object({
+        name: t.String({ minLength: 1 }),
+      }),
     }
   );

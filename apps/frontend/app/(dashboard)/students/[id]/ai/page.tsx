@@ -43,6 +43,7 @@ import {
   Loader2,
   Check,
   Save,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -254,6 +255,25 @@ export default function AiAssistantPage() {
     }
   }
 
+  /**
+   * handleDeleteSummary — Menghapus draft AI summary.
+   * @param summaryId - ID summary yang akan dihapus
+   */
+  async function handleDeleteSummary(summaryId: string) {
+    if (!confirm("Hapus draft AI ini?")) return;
+    try {
+      await api.handleResponse(api.delete(`/ai-summaries/${summaryId}`));
+      toast.success("Draft AI berhasil dihapus");
+      // Refresh summaries
+      const data = await api.handleResponse(
+        api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`)
+      );
+      setSummaries(data);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus draft");
+    }
+  }
+
   /** Summary terbaru untuk tipe STUDENT_SUMMARY (Catatan Wali Kelas) */
   const latestSummary = getLatestSummary("STUDENT_SUMMARY");
   /** Summary terbaru untuk tipe DRAFT_DESCRIPTION (Deskripsi Kompetensi) */
@@ -345,6 +365,7 @@ export default function AiAssistantPage() {
               onRegenerate={handleRegenerate}
               onSaveDraft={handleSaveDraft}
               onFinalize={handleFinalize}
+              onDelete={handleDeleteSummary}
             />
           </TabsContent>
 
@@ -365,6 +386,7 @@ export default function AiAssistantPage() {
               onRegenerate={handleRegenerate}
               onSaveDraft={handleSaveDraft}
               onFinalize={handleFinalize}
+              onDelete={handleDeleteSummary}
             />
           </TabsContent>
         </Tabs>
@@ -422,6 +444,7 @@ function AiContentPanel({
   onRegenerate,
   onSaveDraft,
   onFinalize,
+  onDelete,
 }: {
   title: string;
   description: string;
@@ -437,6 +460,7 @@ function AiContentPanel({
   onRegenerate: (id: string) => void;
   onSaveDraft: (s: AiSummary) => void;
   onFinalize: (s: AiSummary) => void;
+  onDelete: (id: string) => void;
 }) {
   // ── Loading State ────────────────────────────────────────────────
   if (loading) {
@@ -584,6 +608,14 @@ function AiContentPanel({
                 <CheckCircle2 className="w-4 h-4" />
               )}
               Finalisasi
+            </button>
+            {/* Tombol Hapus Draft */}
+            <button
+              onClick={() => onDelete(summary.id)}
+              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+              title="Hapus draft AI"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
             </button>
           </div>
         </div>

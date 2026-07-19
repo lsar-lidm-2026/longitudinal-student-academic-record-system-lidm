@@ -26,7 +26,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import type { ClassItem, User as UserType, AiSummary } from "@/types";
-import { BookOpen, Users, ShieldCheck, GraduationCap, AlertCircle, Sparkles, Loader2, X, FileText, Search, Plus } from "lucide-react";
+import { BookOpen, Users, ShieldCheck, GraduationCap, AlertCircle, Sparkles, Loader2, X, FileText, Search, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ClassesPage() {
@@ -75,6 +75,22 @@ export default function ClassesPage() {
       setCreateError(err.message || "Gagal membuat kelas");
     } finally {
       setCreating(false);
+    }
+  }
+
+  /**
+   * handleDeleteClass — Menghapus kelas (hanya yang memiliki 0 siswa).
+   * @param classId - ID kelas
+   * @param className - Nama kelas
+   */
+  async function handleDeleteClass(classId: string, className: string) {
+    if (!confirm(`Hapus kelas ${className}?`)) return;
+    try {
+      await api.handleResponse(api.delete(`/classes/${classId}`));
+      toast.success(`Kelas ${className} berhasil dihapus`);
+      refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus kelas");
     }
   }
 
@@ -388,7 +404,7 @@ export default function ClassesPage() {
                         </span>
                       )}
                     </td>
-                    {/* Kolom Aksi -- Tombol Transition Summary (FR-13) */}
+                    {/* Kolom Aksi -- Tombol Transition Summary (FR-13) + Hapus */}
                     {canTransition && (
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -414,6 +430,16 @@ export default function ClassesPage() {
                             >
                               <FileText className="w-3 h-3" />
                               Lihat
+                            </button>
+                          )}
+                          {/* Tombol Hapus — hanya untuk kelas dengan 0 siswa dan admin/operator */}
+                          {isAdm && cls._count?.students === 0 && (
+                            <button
+                              onClick={() => handleDeleteClass(cls.id, cls.name)}
+                              className="p-1 hover:bg-red-50 rounded transition-colors"
+                              title="Hapus kelas"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-red-400" />
                             </button>
                           )}
                         </div>

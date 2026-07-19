@@ -42,6 +42,8 @@ import {
   Paperclip,
   Loader2,
   Copy,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 import { api, API_BASE_URL } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -229,6 +231,38 @@ export default function BukuIndukPage() {
     } finally {
       setUploadingDoc(false);
       setUploadDocProgress(0);
+    }
+  }
+
+  /**
+   * handleDeleteDocument — Menghapus dokumen siswa.
+   * @param docId - ID dokumen
+   * @param docName - Nama dokumen untuk konfirmasi
+   */
+  async function handleDeleteDocument(docId: string, docName: string) {
+    if (!confirm(`Hapus dokumen "${docName}"?`)) return;
+    try {
+      await api.handleResponse(api.delete(`/upload/documents/${docId}`));
+      toast.success(`Dokumen "${docName}" berhasil dihapus`);
+      await fetchDocuments();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus dokumen");
+    }
+  }
+
+  /**
+   * handleRenameDocument — Mengganti nama dokumen siswa.
+   * @param docId - ID dokumen
+   */
+  async function handleRenameDocument(docId: string) {
+    const newName = prompt("Nama baru dokumen:", "");
+    if (!newName || newName.trim() === "") return;
+    try {
+      await api.handleResponse(api.put(`/upload/documents/${docId}`, { name: newName.trim() }));
+      toast.success("Nama dokumen berhasil diperbarui");
+      await fetchDocuments();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memperbarui nama dokumen");
     }
   }
 
@@ -700,16 +734,32 @@ export default function BukuIndukPage() {
                         </div>
                       </div>
                     </div>
-                    {/* Tombol download/lihat dokumen */}
-                    <a
-                      href={doc.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"
-                      onClick={() => logger.info("BukuIndukPage", "Membuka dokumen", { docId: doc.id, name: doc.name })}
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
+                    {/* Tombol aksi dokumen: ubah nama, download, hapus */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleRenameDocument(doc.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-colors"
+                        title="Ubah nama dokumen"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <a
+                        href={doc.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"
+                        onClick={() => logger.info("BukuIndukPage", "Membuka dokumen", { docId: doc.id, name: doc.name })}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        onClick={() => handleDeleteDocument(doc.id, doc.name)}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                        title="Hapus dokumen"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

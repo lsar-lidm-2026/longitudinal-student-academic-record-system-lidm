@@ -22,6 +22,8 @@ import * as service from "./class.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { checkRole } from "../../middleware/role";
+import { prisma } from "../../lib/prisma";
+import { NotFoundError, ValidationError } from "../../common/error";
 import logger from "../../lib/logger";
 
 export const classController = new Elysia({ prefix: "/classes" })
@@ -115,4 +117,22 @@ export const classController = new Elysia({ prefix: "/classes" })
         toClassId: t.String(),
       }),
     }
-  );
+  )
+  // ── DELETE /classes/:id ────────────────────────────────────────────────────
+  .delete("/:id", async ({ params, user }) => {
+    // Hanya ADMINISTRATOR yang bisa menghapus kelas
+    checkRole(user, "ADMINISTRATOR");
+    logger.warn({ requesterId: user.userId, classId: params.id }, "DELETE /classes/:id called");
+    const cls = await prisma.class.findUnique({
+      where: { id: params.id },
+      include: { _count: { select: { students: true } } },
+    });
+    if (!cls) throw new NotFoundError("Kelas tidak ditemukan");
+    if (cls._count.students > 0) {
+      throw new ValidationError(
+        `Tidak dapat menghapus kelas "${cls.name}" karena masih memiliki ${cls._count.students} siswa. Pindahkan siswa terlebih dahulu.`
+      );
+    }
+    await prisma.class.delete({ where: { id: params.id } });
+    return success({ message: "Kelas berhasil dihapus" });
+  });

@@ -28,7 +28,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
-import { Calendar, Plus, Archive, CheckCircle, Clock } from "lucide-react";
+import { Calendar, Plus, Archive, CheckCircle, Clock, Trash2 } from "lucide-react";
 import type { AcademicYear } from "@/types";
 
 export default function AcademicYearsPage() {
@@ -135,6 +135,22 @@ export default function AcademicYearsPage() {
     } catch (err: any) {
       toast.error(err.message || "Gagal mengarsipkan tahun ajaran");
       logger.error("AcademicYearsPage", "Gagal mengarsipkan tahun ajaran", { err });
+    }
+  }
+
+  /**
+   * handleDeleteYear — Menghapus tahun ajaran (hanya yang non-active, non-archived).
+   * @param yearId - ID AcademicYear
+   * @param year - Tahun ajaran (untuk konfirmasi)
+   */
+  async function handleDeleteYear(yearId: string, year: string) {
+    if (!confirm(`Hapus tahun ajaran ${year}? Data terkait akan ikut terhapus.`)) return;
+    try {
+      await api.handleResponse(api.delete(`/academic-years/${yearId}`));
+      toast.success(`Tahun ajaran ${year} berhasil dihapus`);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus tahun ajaran");
     }
   }
 
@@ -247,6 +263,16 @@ export default function AcademicYearsPage() {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 hover:text-red-600 transition-colors"
                       >
                         <Archive className="w-3.5 h-3.5" /> Arsipkan
+                      </button>
+                    )}
+                    {/* Tombol Hapus — hanya untuk yang tidak aktif dan tidak diarsip */}
+                    {!year.isActive && !year.isArchived && (
+                      <button
+                        onClick={() => handleDeleteYear(year.id, year.year)}
+                        className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Hapus tahun ajaran"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
                       </button>
                     )}
                   </div>

@@ -23,6 +23,8 @@ import * as service from "./health-record.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { requireRecordOwner } from "../../middleware/record-owner";
+import { prisma } from "../../lib/prisma";
+import { NotFoundError } from "../../common/error";
 
 /**
  * healthRecordController — Elysia route group untuk prefix /semester-records.
@@ -57,4 +59,14 @@ export const healthRecordController = new Elysia({ prefix: "/semester-records" }
           }),
         }
       )
+      // ── DELETE /semester-records/:id/health-record — Hapus data kesehatan ──
+      .delete("/:id/health-record", async ({ params }) => {
+        logger.info({ recordId: params.id }, "DELETE health record");
+        const existing = await prisma.healthRecord.findUnique({
+          where: { semesterRecordId: params.id },
+        });
+        if (!existing) throw new NotFoundError("Data kesehatan tidak ditemukan");
+        await prisma.healthRecord.delete({ where: { semesterRecordId: params.id } });
+        return success({ message: "Data kesehatan berhasil dihapus" });
+      })
   );

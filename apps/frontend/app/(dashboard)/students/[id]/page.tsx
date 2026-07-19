@@ -51,6 +51,7 @@ import {
   Plus,
   Trash2,
   MessageSquare,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -380,6 +381,24 @@ export default function StudentDetailPage() {
       toast.error(msg);
     } finally {
       setNoteSubmitting(false);
+    }
+  }
+
+  /**
+   * handleEditNote — Mengedit catatan guru.
+   * @param noteId - ID catatan
+   * @param currentContent - Konten saat ini
+   */
+  async function handleEditNote(noteId: string, currentContent: string) {
+    const newContent = prompt("Edit catatan:", currentContent);
+    if (!newContent || newContent.trim() === "" || newContent === currentContent) return;
+    try {
+      await api.handleResponse(api.put(`/teacher-notes/${noteId}`, { content: newContent.trim() }));
+      toast.success("Catatan berhasil diperbarui");
+      await fetchNotes();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal memperbarui catatan";
+      toast.error(msg);
     }
   }
 
@@ -1066,15 +1085,24 @@ export default function StudentDetailPage() {
                               </span>
                             </div>
                           </div>
-                          {/* Tombol hapus — hanya tampil untuk catatan milik guru yang login */}
+                          {/* Tombol edit & hapus — hanya tampil untuk catatan milik guru yang login */}
                           {currentUserId && note.createdById === currentUserId && (
-                            <button
-                              onClick={() => handleDeleteNote(note.id)}
-                              className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                              title="Hapus catatan"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleEditNote(note.id, note.content)}
+                                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-blue-500 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-all"
+                                title="Edit catatan"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteNote(note.id)}
+                                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                                title="Hapus catatan"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
