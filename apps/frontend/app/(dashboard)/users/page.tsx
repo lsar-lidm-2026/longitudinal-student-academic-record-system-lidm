@@ -4,7 +4,8 @@
  * Cara kerja file (How this file works):
  * =======================================
  * Halaman ini mengelola pengguna sistem (Users). Fitur:
- * - Melihat daftar semua pengguna (Admin, Operator, Guru, Kepala Sekolah).
+ * - Melihat daftar semua pengguna dengan filter per role (Semua, Guru, Admin, Operator, Kepsek).
+ * - Untuk Guru, menampilkan kelas-kelas yang diampu.
  * - Menambah pengguna baru via form di sidebar.
  * - Mengedit nama dan role pengguna.
  * - Mengaktifkan/nonaktifkan status pengguna (toggle).
@@ -62,22 +63,46 @@ export default function UsersPage() {
   /** Toggle show/hide password on create form */
   const [showNewUserPw, setShowNewUserPw] = useState(false);
 
+  /** Filter role yang sedang aktif — null = semua */
+  const [roleFilter, setRoleFilter] = useState<string | null>(null);
+
+  /** Data kelas untuk menampilkan wali kelas per guru */
+  const [teacherClasses, setTeacherClasses] = useState<Record<string, string[]>>({});
+
+  /** Map wali kelas: classId → className untuk lookup cepat */
+  const [classNames, setClassNames] = useState<Record<string, string>>({});
+
   /**
-   * load — Mengambil daftar pengguna dari API.
+   * load — Mengambil daftar pengguna dari API dan data kelas untuk lookup.
    */
   function load() {
     setLoading(true);
     setError(null);
     logger.info("UsersPage", "Memuat daftar pengguna");
-    api
-      .handleResponse(api.get<User[]>("/users"))
-      .then((data) => {
-        setUsers(data);
-        logger.info("UsersPage", "Pengguna berhasil dimuat", { count: data.length });
+    Promise.all([
+      api.handleResponse(api.get<User[]>("/users")),
+      api.handleResponse(api.get<any[]>("/classes")),
+    ])
+      .then(([usersData, classesData]) => {
+        setUsers(usersData);
+        // Build lookup maps untuk kelas → wali kelas
+        const teacherMap: Record<string, string[]> = {};
+        const nameMap: Record<string, string> = {};
+        for (const cls of classesData) {
+          nameMap[cls.id] = cls.name;
+          const teacherId = cls.homeroomTeacher?.id;
+          if (teacherId) {
+            if (!teacherMap[teacherId]) teacherMap[teacherId] = [];
+            teacherMap[teacherId].push(cls.name);
+          }
+        }
+        setTeacherClasses(teacherMap);
+        setClassNames(nameMap);
+        logger.info("UsersPage", "Data berhasil dimuat", { users: usersData.length, classes: classesData.length });
       })
       .catch((err) => {
-        setError(err.message || "Gagal memuat data pengguna");
-        logger.error("UsersPage", "Gagal memuat data pengguna", { err });
+        setError(err.message || "Gagal memuat data");
+        logger.error("UsersPage", "Gagal memuat data", { err });
       })
       .finally(() => setLoading(false));
   }
@@ -219,7 +244,7 @@ export default function UsersPage() {
               Pengguna Sistem
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Kelola akun administrator, operator, dan guru.
+              Kelola akun administrator, operator, dan guru. Filter per role untuk melihat guru dan kelas yang diampu.
             </p>
           </div>
           {/* Tombol toggle form — berubah jadi "Batal" jika form terbuka */}
@@ -240,18 +265,44 @@ export default function UsersPage() {
 
           {/* ── Main Table Area ──────────────────────────────────────────── */}
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm order-2 lg:order-1">
+            {/* ── Role Filter Tabs ──────────────────────────────────────── */}
+            <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-100">
+              {[
+                { key: null, label: "Semua" },
+                { key: "GURU", label: "Guru" },
+                { key: "ADMINISTRATOR", label: "Admin" },
+                { key: "OPERATOR_SEKOLAH", label: "Operator" },
+                { key: "KEPALA_SEKOLAH", label: "Kepsek" },
+              ].map((tab) => (
+                <button
+                  key={tab.key || "all"}
+                  onClick={() => setRoleFilter(tab.key)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    roleFilter === tab.key
+                      ? "bg-blue-100 text-blue-700"
+                      : "text-gray-500 hover:bg-gray-100"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Username</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Nama</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kelas Diampu</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
+                {users
+                  .filter((user) => !roleFilter || user.role === roleFilter)
+                  .map((user) => (
                   <tr key={user.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                     <td className="py-3 px-4 text-sm font-medium text-gray-900">{user.username}</td>
                     <td className="py-3 px-4 text-sm text-gray-600">{user.name}</td>
@@ -260,6 +311,20 @@ export default function UsersPage() {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${roleConfig[user.role].color}`}>
                         {roleConfig[user.role].label}
                       </span>
+                    </td>
+                    {/* Kelas Diampu — untuk guru, tampilkan kelas-kelas yang diampu */}
+                    <td className="py-3 px-4 text-sm">
+                      {user.role === "GURU" ? (
+                        teacherClasses[user.id]?.length > 0 ? (
+                          <span className="text-gray-600">
+                            {teacherClasses[user.id].join(", ")}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 italic">Belum ditugaskan</span>
+                        )
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
                     </td>
                     {/* Status: Aktif (hijau) / Nonaktif (merah) */}
                     <td className="py-3 px-4">
@@ -308,7 +373,7 @@ export default function UsersPage() {
                 {/* Empty state */}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center">
+                    <td colSpan={6} className="py-12 text-center">
                       <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                       <p className="text-sm text-gray-500">Belum ada pengguna terdaftar.</p>
                       <p className="text-xs text-gray-400 mt-1">Tambahkan pengguna baru melalui form di samping.</p>
