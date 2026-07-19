@@ -1,5 +1,5 @@
 "use client";
-export default function DashboardError({ error, reset }: { error: Error; reset: () => void }) {
+export default function UsersError({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-16">
       <p className="text-red-500 mb-4">Terjadi kesalahan</p>

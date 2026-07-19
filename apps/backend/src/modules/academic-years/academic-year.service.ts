@@ -138,24 +138,58 @@ export async function update(id: string, data: { year?: string }) {
 export async function activate(id: string) {
   logger.info({ academicYearId: id }, "academic-year.service.activate — start");
 
-  // Pastikan academic year ada
-  await getById(id);
+  // Pastikan academic year ada dan simpan untuk logging nanti
+  const year = await getById(id);
 
-  // Transaction: deactivate semua, activate satu
-  logger.info({ academicYearId: id }, "academic-year.service.activate — running transaction: deactivate all, activate one");
+  // Ambil data tahun ajaran yang sebelumnya aktif (untuk copy class structure)
+  const previousActiveYear = await prisma.academicYear.findFirst({
+    where: { isActive: true, id: { not: id } },
+  });
 
-  return prisma.$transaction([
+  // Jika ada tahun ajaran sebelumnya, ambil daftar kelas-nya
+  let previousClasses: { name: string; homeroomTeacherId: string | null }[] = [];
+  if (previousActiveYear) {
+    previousClasses = await prisma.class.findMany({
+      where: { academicYearId: previousActiveYear.id },
+      select: { name: true, homeroomTeacherId: true },
+    });
+  }
+
+  logger.info({ academicYearId: id }, "academic-year.service.activate — running transaction");
+
+  // Transaction: deactivate semua, activate satu, lalu copy class structure
+  return prisma.$transaction(async (tx) => {
     // Step 1: Nonaktifkan semua academic year yang sedang aktif
-    prisma.academicYear.updateMany({
+    await tx.academicYear.updateMany({
       where: { isActive: true },
       data: { isActive: false },
-    }),
+    });
+
     // Step 2: Aktifkan academic year yang dipilih, hapus status arsip
-    prisma.academicYear.update({
+    const updated = await tx.academicYear.update({
       where: { id },
       data: { isActive: true, isArchived: false },
-    }),
-  ]);
+    });
+
+    // Step 3: Copy class structure dari tahun ajaran sebelumnya
+    if (previousClasses.length > 0) {
+      await tx.class.createMany({
+        data: previousClasses.map((c) => ({
+          name: c.name,
+          academicYearId: id,
+          homeroomTeacherId: c.homeroomTeacherId,
+        })),
+      });
+
+      logger.info({
+        newYear: year.year,
+        previousYear: previousActiveYear!.year,
+        classesCreated: previousClasses.length,
+      }, "Classes auto-created for new academic year");
+    }
+
+    return updated;
+  });
 }
 
 // ── Archive ──────────────────────────────────────────────────────────────────

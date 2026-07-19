@@ -54,14 +54,27 @@ export function ChatBot() {
   /** State visibilitas panel chat — true = terbuka */
   const [open, setOpen] = useState(false);
 
-  /** Array riwayat pesan chat — diawali dengan sambutan asisten */
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "Halo! Saya asisten LSAR. Saya bisa membantu Anda mencari data siswa, nilai, kelas, dan informasi lainnya. Ada yang bisa saya bantu?",
-    },
-  ]);
+  /** Array riwayat pesan chat — diawali dengan sambutan asisten, dipersist di localStorage */
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem("chatbot_messages");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // Ignore parse errors — fallback ke default
+    }
+    return [
+      {
+        role: "assistant",
+        content:
+          "Halo! Saya asisten LSAR. Saya bisa membantu Anda mencari data siswa, nilai, kelas, dan informasi lainnya. Ada yang bisa saya bantu?",
+      },
+    ];
+  });
 
   /** State input text pengguna */
   const [input, setInput] = useState("");
@@ -72,6 +85,17 @@ export function ChatBot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   /** Ref untuk auto-focus input chat */
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Effect: persist messages ke localStorage setiap ada perubahan.
+   */
+  useEffect(() => {
+    try {
+      localStorage.setItem("chatbot_messages", JSON.stringify(messages));
+    } catch {
+      // localStorage mungkin penuh atau tidak tersedia
+    }
+  }, [messages]);
 
   /**
    * Effect: auto-scroll ke bawah setiap kali ada pesan baru.

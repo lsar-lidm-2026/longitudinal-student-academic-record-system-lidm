@@ -49,6 +49,11 @@ export default function ClassesPage() {
   /** ID kelas yang sedang menampilkan dialog hasil */
   const [showingResultClassId, setShowingResultClassId] = useState<string | null>(null);
 
+  /** Daftar tahun ajaran untuk filter */
+  const [academicYears, setAcademicYears] = useState<Array<{id:string;year:string;isActive:boolean}>>([]);
+  /** ID tahun ajaran yang dipilih */
+  const [selectedYearId, setSelectedYearId] = useState<string>("");
+
   // -- Search Filter --
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -59,9 +64,10 @@ export default function ClassesPage() {
     setLoading(true);
     setError(null);
     logger.info("ClassesPage", "Memuat data kelas");
+    const url = selectedYearId ? `/classes?yearId=${selectedYearId}` : "/classes";
     Promise.all([
       // Ambil daftar kelas
-      api.handleResponse(api.get<ClassItem[]>("/classes")),
+      api.handleResponse(api.get<ClassItem[]>(url)),
       // Ambil daftar semua user (untuk opsi wali kelas)
       api.handleResponse(api.get<UserType[]>("/users")),
       // Ambil role user yang login
@@ -88,9 +94,34 @@ export default function ClassesPage() {
       .finally(() => setLoading(false));
   }
 
+  /** Fetch academic years untuk filter dropdown — pilih yang aktif sebagai default */
+  useEffect(() => {
+    api.get("/academic-years").then((res: any) => {
+      const years: Array<{id:string;year:string;isActive:boolean}> = res.data || [];
+      setAcademicYears(years);
+      const active = years.find((y: any) => y.isActive);
+      if (active) {
+        setSelectedYearId(active.id);
+      } else if (years.length > 0) {
+        setSelectedYearId(years[0].id);
+      }
+    }).catch((err: any) => {
+      logger.warn("ClassesPage", "Gagal memuat tahun ajaran untuk filter", { err });
+    });
+  }, []);
+
+  /** Re-fetch classes saat selectedYearId berubah */
+  useEffect(() => {
+    if (academicYears.length > 0) {
+      refresh();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYearId]);
+
   /** Trigger refresh saat mount */
   useEffect(() => {
     refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -180,11 +211,32 @@ export default function ClassesPage() {
     <AuthGuard roles={["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"]}>
       <div className="space-y-6">
         {/* ── Header ────────────────────────────────────────────────── */}
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Manajemen Kelas</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Kelola data kelas dan pembagian wali kelas untuk setiap tahun ajaran aktif.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Manajemen Kelas</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Kelola data kelas dan pembagian wali kelas untuk setiap tahun ajaran aktif.
+            </p>
+          </div>
+          {/* Filter Tahun Ajaran */}
+          {academicYears.length > 0 && (
+            <div className="w-full sm:w-56">
+              <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                Filter Tahun Ajaran
+              </label>
+              <select
+                value={selectedYearId}
+                onChange={(e) => setSelectedYearId(e.target.value)}
+                className="w-full h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-gray-900"
+              >
+                {academicYears.map((y) => (
+                  <option key={y.id} value={y.id}>
+                    {y.year} {y.isActive ? "(Aktif)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* ── Mini Stats ──────────────────────────────────────────────── */}

@@ -307,3 +307,21 @@ export async function update(
   logger.info({ studentId: id }, "Student updated successfully");
   return student;
 }
+
+/**
+ * remove — Menghapus siswa berdasarkan ID.
+ * Hanya ADMINISTRATOR dan OPERATOR_SEKOLAH yang bisa menghapus.
+ * @param id - ID siswa yang akan dihapus
+ * @param deletedById - ID user yang melakukan penghapusan (untuk audit log)
+ */
+export async function remove(id: string, deletedById: string) {
+  logger.warn({ studentId: id, deletedById }, "Removing student");
+
+  const student = await prisma.student.findUnique({ where: { id } });
+  if (!student) throw new NotFoundError("Siswa tidak ditemukan");
+
+  await prisma.student.delete({ where: { id } });
+
+  logger.info({ studentId: id, nis: student.nis, name: student.name }, "Student removed successfully");
+  return { message: "Siswa berhasil dihapus" };
+}

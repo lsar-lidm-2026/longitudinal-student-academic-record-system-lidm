@@ -133,9 +133,29 @@ import * as healthRecordService from "../health-records/health-record.service";
  * Prefix: /semester-records — endpoint pattern: /semester-records/:id/{sub-resource}
  */
 export const semesterRecordSubController = new Elysia({ prefix: "/semester-records" })
+  // Bootstrap route needs requireAuth but NOT requireHomeroomAccess (uses classId, not studentId)
+  .use(requireAuth)
+  .post(
+    "/classes/:classId/bootstrap",
+    async ({ params, body, user }) => {
+      logger.info({ classId: params.classId }, "POST /classes/:classId/bootstrap called");
+      const result = await service.bootstrapClassSemester(
+        params.classId,
+        body.academicYearId,
+        body.semester,
+        user.userId,
+      );
+      return success(result);
+    },
+    {
+      body: t.Object({
+        academicYearId: t.String(),
+        semester: t.Number(),
+      }),
+    },
+  )
   .guard({}, (app) =>
     app
-      .use(requireAuth)
       .use(requireHomeroomAccess)
 
       // GET /semester-records/:id — get single semester record by ID with all sub-resources

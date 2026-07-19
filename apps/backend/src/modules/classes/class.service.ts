@@ -29,14 +29,24 @@ import { NotFoundError } from "../../common/error";
  *
  * @returns - Promise<Class[]> dengan include academicYear.year, homeroomTeacher, _count.students
  */
-export async function list() {
-  logger.debug("class.service.list — start");
+export async function list(all?: boolean, yearId?: string) {
+  logger.debug({ all, yearId }, "class.service.list — start");
 
-  // Ambil semua kelas — filter ke tahun ajaran aktif secara default
-  // Untuk akses historical data, frontend bisa tambah query param ?all=true
-  const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
+  // Build year filter:
+  // 1. If yearId explicitly provided → filter by that year
+  // 2. If ?all=true → no filter (return all years)
+  // 3. Default → filter to active academic year only
+  let yearFilter: { academicYearId: string } | undefined;
+
+  if (yearId) {
+    yearFilter = { academicYearId: yearId };
+  } else if (!all) {
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
+    if (activeYear) yearFilter = { academicYearId: activeYear.id };
+  }
+
   const classes = await prisma.class.findMany({
-    where: activeYear ? { academicYearId: activeYear.id } : undefined,
+    where: yearFilter,
     include: {
       academicYear: { select: { year: true } },
       homeroomTeacher: { select: { id: true, name: true } },
@@ -197,4 +207,34 @@ export async function updateClass(id: string, data: { name?: string; academicYea
       _count: { select: { students: true } },
     },
   });
+}
+
+// ── Promote Students ──────────────────────────────────────────────────────────
+
+/**
+ * promoteStudents — Memindahkan semua siswa dari satu kelas ke kelas lain
+ * (misalnya: 1A → 2A). Semua siswa di kelas asal dipindahkan ke kelas tujuan.
+ *
+ * @param fromClassId - ID kelas asal (current year class)
+ * @param toClassId - ID kelas tujuan (next year class)
+ * @returns { promoted: number } — jumlah siswa yang dipromosikan
+ */
+export async function promoteStudents(fromClassId: string, toClassId: string) {
+  logger.info({ fromClassId, toClassId }, "Promoting students between classes");
+
+  const [fromClass, toClass] = await Promise.all([
+    prisma.class.findUnique({ where: { id: fromClassId }, select: { academicYearId: true } }),
+    prisma.class.findUnique({ where: { id: toClassId }, select: { academicYearId: true } }),
+  ]);
+
+  if (!fromClass || !toClass) throw new NotFoundError("Kelas tidak ditemukan");
+
+  // Update semua siswa dari kelas asal ke kelas tujuan
+  const result = await prisma.student.updateMany({
+    where: { classId: fromClassId },
+    data: { classId: toClassId },
+  });
+
+  logger.info({ fromClassId, toClassId, promoted: result.count }, "Students promoted successfully");
+  return { promoted: result.count };
 }

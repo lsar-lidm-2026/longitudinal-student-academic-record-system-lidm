@@ -206,3 +206,56 @@ export async function deleteRecord(id: string) {
   ]);
   logger.info({ recordId: id }, "Semester record and related data deleted successfully");
 }
+
+/**
+ * bootstrapClassSemester — Creates semester records for ALL students in one class
+ * in a single operation. Saves teachers from creating records one by one.
+ *
+ * Uses individual create calls to handle unique constraint violations gracefully
+ * (existing records are counted, not failed).
+ *
+ * @param classId - Class UUID
+ * @param academicYearId - Academic year UUID
+ * @param semester - 1 (Ganjil) or 2 (Genap)
+ * @param createdById - User ID who performs the operation
+ * @returns { created: number, existing: number, total: number }
+ */
+export async function bootstrapClassSemester(
+  classId: string,
+  academicYearId: string,
+  semester: number,
+  createdById: string,
+) {
+  logger.info({ classId, academicYearId, semester }, "Bootstrap semester records for class");
+
+  const students = await prisma.student.findMany({
+    where: { classId },
+    select: { id: true, name: true },
+  });
+
+  let created = 0;
+  let existing = 0;
+
+  for (const student of students) {
+    try {
+      await prisma.semesterRecord.create({
+        data: {
+          studentId: student.id,
+          academicYearId,
+          semester,
+          createdById,
+        },
+      });
+      created++;
+    } catch (err: any) {
+      if (err.code === "P2002") {
+        existing++;
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  logger.info({ classId, created, existing, total: students.length }, "Bootstrap completed");
+  return { created, existing, total: students.length };
+}

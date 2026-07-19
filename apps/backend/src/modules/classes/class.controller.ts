@@ -28,12 +28,17 @@ export const classController = new Elysia({ prefix: "/classes" })
   // ── Middleware: requireAuth (JWT verification) ─────────────────────────────
   .use(requireAuth)
   // ── GET /classes ───────────────────────────────────────────────────────────
-  .get("/", async ({ user }) => {
+  .get("/", async ({ user, query }) => {
     // ADMIN, OPERATOR, KEPSEK bisa melihat daftar kelas
     checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH");
-    logger.info({ requesterId: user.userId }, "List all classes");
-    const data = await service.list();
+    logger.info({ requesterId: user.userId, all: query.all, yearId: query.yearId }, "List all classes");
+    const data = await service.list(query.all === "true", query.yearId);
     return success(data);
+  }, {
+    query: t.Optional(t.Object({
+      all: t.Optional(t.String()),
+      yearId: t.Optional(t.String()),
+    })),
   })
   // ── POST /classes ──────────────────────────────────────────────────────────
   .post(
@@ -94,4 +99,20 @@ export const classController = new Elysia({ prefix: "/classes" })
     logger.info({ requesterId: user.userId, classId: params.id }, "Get students by class");
     const data = await service.getStudents(params.id);
     return success(data);
-  });
+  })
+  // ── POST /classes/:id/promote — Kenaikan kelas (promote all students) ──────
+  .post(
+    "/:id/promote",
+    async ({ params, body, user }) => {
+      // Hanya ADMINISTRATOR dan OPERATOR_SEKOLAH yang bisa melakukan promote
+      checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH");
+      logger.info({ fromClassId: params.id, toClassId: body.toClassId }, "POST /classes/:id/promote called");
+      const result = await service.promoteStudents(params.id, body.toClassId);
+      return success(result);
+    },
+    {
+      body: t.Object({
+        toClassId: t.String(),
+      }),
+    }
+  );

@@ -28,7 +28,7 @@
  */
 
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   User,
@@ -79,6 +79,10 @@ export default function StudentDetailPage() {
   const [formData, setFormData] = useState({ name: "", nis: "", nisn: "" });
   /** Loading state saat submit form biodata */
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** Router untuk navigasi setelah delete */
+  const router = useRouter();
+  /** Role user yang login (dari JWT) */
+  const [userRole, setUserRole] = useState<string | null>(null);
   // ── Photo Upload States ───────────────────────────────────────────────
   /** Loading state saat upload foto */
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -173,6 +177,24 @@ export default function StudentDetailPage() {
       toast.error(msg);
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  /**
+   * handleDeleteStudent — Menghapus siswa (hanya ADMINISTRATOR).
+   * Mengonfirmasi dengan dialog confirm, lalu DELETE /students/:id.
+   */
+  async function handleDeleteStudent() {
+    if (!confirm("Apakah Anda yakin ingin menghapus siswa ini? Tindakan ini tidak dapat dibatalkan.")) return;
+    logger.info("StudentDetailPage", "Menghapus siswa", { studentId: params.id });
+    try {
+      await api.handleResponse(api.delete(`/students/${params.id}`));
+      toast.success("Siswa berhasil dihapus");
+      router.push("/students");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal menghapus siswa";
+      logger.error("StudentDetailPage", "Gagal menghapus siswa", { err, studentId: params.id });
+      toast.error(msg);
     }
   }
 
@@ -429,7 +451,8 @@ export default function StudentDetailPage() {
       try {
         const payload = JSON.parse(atob(token.split(".")[1]));
         setCurrentUserId(payload.userId || null);
-        logger.info("StudentDetailPage", "Current user ID decoded from JWT", { userId: payload.userId });
+        setUserRole(payload.role || null);
+        logger.info("StudentDetailPage", "Current user ID decoded from JWT", { userId: payload.userId, role: payload.role });
       } catch {
         logger.warn("StudentDetailPage", "Gagal decode token JWT untuk currentUserId");
       }
@@ -545,6 +568,16 @@ export default function StudentDetailPage() {
             <Edit className="w-4 h-4" />
             Ubah Biodata
           </button>
+          {/* Tombol Hapus Siswa — hanya untuk ADMINISTRATOR */}
+          {userRole === "ADMINISTRATOR" && (
+            <button
+              onClick={handleDeleteStudent}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 bg-red-50 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors shadow-sm"
+            >
+              <Trash2 className="w-4 h-4" />
+              Hapus
+            </button>
+          )}
         </div>
       </div>
 

@@ -50,7 +50,8 @@ import { semesterRecordSubController } from "./modules/semester-records/semester
 import { subjectScoreController } from "./modules/subject-scores/subject-score.controller";
 import { attendanceController } from "./modules/attendance/attendance.controller";
 // import { achievementController } from "./modules/achievements/achievement.controller";
-import { healthRecordController } from "./modules/health-records/health-record.controller";
+// Health record route is registered via semesterRecordSubController (with requireHomeroomAccess)
+// import { healthRecordController } from "./modules/health-records/health-record.controller";
 import { profileController } from "./modules/profile/profile.controller";
 import { bukuIndukController } from "./modules/buku-induk/buku-induk.controller";
 import { dashboardController } from "./modules/dashboard/dashboard.controller";
@@ -180,7 +181,7 @@ const app = new Elysia()
       .use(subjectScoreController)
       .use(attendanceController)
       // .use(achievementController)
-      .use(healthRecordController)
+      // .use(healthRecordController) // Registered via semesterRecordSubController with homeroom guard
       .use(activityController)
       .use(profileController)
       .use(bukuIndukController)

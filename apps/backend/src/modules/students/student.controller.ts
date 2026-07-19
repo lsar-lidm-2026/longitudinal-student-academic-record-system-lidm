@@ -166,4 +166,14 @@ export const studentController = new Elysia({ prefix: "/students" })
         logger.info({ studentId: data.id }, "Student retrieved successfully");
         return success(data);
       })
+      // DELETE /:id — hapus siswa (admin/operator only)
+      .delete(
+        "/:id",
+        async ({ params, user }) => {
+          checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH");
+          logger.info({ studentId: params.id, userId: user.userId }, "DELETE /students/:id called");
+          await service.remove(params.id, user.userId);
+          return success({ message: "Siswa berhasil dihapus" });
+        }
+      )
   );

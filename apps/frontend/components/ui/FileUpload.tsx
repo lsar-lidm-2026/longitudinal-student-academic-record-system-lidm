@@ -40,6 +40,7 @@
 
 import { useState, useRef, DragEvent } from "react";
 import { Upload, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 
 const MODULE = "FileUpload"; /** Nama module untuk logger */
@@ -93,6 +94,25 @@ export function FileUpload({
     // Reset error sebelumnya
     setError(null);
     logger.info(MODULE, "File dipilih", { name: file.name, size: file.size, type: file.type });
+
+    // Validate file type
+    if (accept && accept !== "*") {
+      const allowedTypes = accept.split(",").map(t => t.trim().toLowerCase());
+      const fileType = file.type.toLowerCase();
+      const isValid = allowedTypes.some(t => {
+        if (t.endsWith("/*")) {
+          const category = t.replace("/*", "");
+          return fileType.startsWith(category);
+        }
+        return fileType === t || file.name.endsWith(t.replace("*", ""));
+      });
+      if (!isValid) {
+        const errMsg = `Tipe file tidak didukung. Gunakan: ${accept}`;
+        logger.warn(MODULE, "Tipe file tidak valid", { fileName: file.name, fileType: file.type, accept });
+        setError(errMsg);
+        return;
+      }
+    }
 
     // Validasi ukuran file
     if (file.size > maxSizeMB * 1024 * 1024) {
