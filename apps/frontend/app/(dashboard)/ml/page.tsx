@@ -41,8 +41,12 @@ import {
   RefreshCw,
   CheckCircle2,
   XCircle,
+  Cpu,
+  Download,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
-import type { ClassItem, RiskData, EvaluationReport, Role } from "@/types";
+import type { ClassItem, RiskData, EvaluationReport, ClusterResult, Role } from "@/types";
 
 export default function MLDashboardPage() {
   /** Daftar kelas (dari /classes + managedClasses dari dashboard) */
@@ -55,6 +59,22 @@ export default function MLDashboardPage() {
   const [loading, setLoading] = useState(false);
   /** State error */
   const [error, setError] = useState<string | null>(null);
+
+  // ── Clustering Siswa (FR-17) ──────────────────────────────────────────
+  /** Data clustering untuk kelas yang dipilih */
+  const [clusterData, setClusterData] = useState<ClusterResult | null>(null);
+  /** Loading state untuk fetch clustering */
+  const [clusterLoading, setClusterLoading] = useState(false);
+  /** Error state untuk fetch clustering */
+  const [clusterError, setClusterError] = useState<string | null>(null);
+  /** Set cluster ID yang sedang di-expand (untuk accordion) */
+  const [expandedClusters, setExpandedClusters] = useState<Set<number>>(new Set());
+
+  // ── Model Training (FR-18) ────────────────────────────────────────────
+  /** Sedang melatih model */
+  const [training, setTraining] = useState(false);
+  /** Hasil training terakhir */
+  const [trainResult, setTrainResult] = useState<{ trainedAt: string; status: string } | null>(null);
 
   // ── Evaluasi Model (khusus ADMINISTRATOR) ────────────────────────────
   /** Data evaluasi model dari GET /ml/eval — hanya untuk ADMINISTRATOR */
@@ -154,12 +174,78 @@ export default function MLDashboardPage() {
       });
   }
 
+  /**
+   * handleTrain — Memicu retraining semua model ML.
+   * POST /ml/train → hanya bisa dipanggil oleh ADMINISTRATOR.
+   * Setelah berhasil, refresh data evaluasi.
+   */
+  async function handleTrain() {
+    setTraining(true);
+    setTrainResult(null);
+    logger.info("MLDashboardPage", "Memulai training model");
+    try {
+      const result = await api.handleResponse(
+        api.post<{ trainedAt: string; status: string }>("/ml/train", {})
+      );
+      setTrainResult(result);
+      toast.success("Model berhasil dilatih ulang!");
+      logger.info("MLDashboardPage", "Training model selesai", result);
+      // Refresh evaluasi setelah training berhasil
+      fetchEvalData();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal melatih model");
+      logger.error("MLDashboardPage", "Gagal melatih model", { err });
+    } finally {
+      setTraining(false);
+    }
+  }
+
+  /**
+   * exportRiskCsv — Mengekspor data risiko siswa ke file CSV.
+   * Membuat file CSV dari riskData.results dan memicu download.
+   */
+  function exportRiskCsv() {
+    if (!riskData || riskData.results.length === 0) return;
+    const className = classes.find((c) => c.id === selectedClass)?.name || "kelas";
+    const headers = ["Nama Siswa", "Level Risiko", "Skor", "Faktor Risiko", "Rekomendasi"];
+    const rows = riskData.results.map((r) => [
+      r.name,
+      r.risk.level,
+      String(r.risk.score),
+      r.risk.factors.join("; "),
+      r.risk.recommendations.join("; "),
+    ]);
+    const csvContent = [headers, ...rows].map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `risiko_${className.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Data risiko berhasil diekspor ke CSV");
+  }
+
+  /**
+   * toggleClusterExpand — Toggle expand/collapse daftar siswa dalam satu cluster.
+   */
+  function toggleClusterExpand(clusterId: number) {
+    setExpandedClusters((prev) => {
+      const next = new Set(prev);
+      if (next.has(clusterId)) next.delete(clusterId);
+      else next.add(clusterId);
+      return next;
+    });
+  }
+
   /** Trigger refresh saat mount */
   useEffect(() => { refresh(); }, []);
 
-  /** Fetch data risiko saat selectedClass berubah */
+  /** Fetch data risiko dan clustering saat selectedClass berubah */
   useEffect(() => {
     if (!selectedClass) return;
+
+    // ── Fetch Risk Data ──
     setLoading(true);
     setError(null);
     logger.info("MLDashboardPage", "Mengambil data risiko", { classId: selectedClass });
@@ -178,6 +264,32 @@ export default function MLDashboardPage() {
         logger.error("MLDashboardPage", "Gagal memuat data risiko", { err });
       })
       .finally(() => setLoading(false));
+
+    // ── Fetch Cluster Data (FR-17) ──
+    setClusterLoading(true);
+    setClusterError(null);
+    setClusterData(null);
+    setExpandedClusters(new Set());
+    logger.info("MLDashboardPage", "Mengambil data clustering", { classId: selectedClass });
+    api.handleResponse(api.get<ClusterResult>(`/ml/cluster/class/${selectedClass}`))
+      .then((data) => {
+        // Backend bisa return { error: "..." } jika model belum di-train
+        if ((data as any).error) {
+          setClusterError((data as any).error);
+          logger.warn("MLDashboardPage", "Cluster model not trained", { msg: (data as any).error });
+        } else {
+          setClusterData(data);
+          logger.info("MLDashboardPage", "Data clustering berhasil dimuat", {
+            clusterCount: data.clusters?.length,
+            assignmentCount: data.assignments?.length,
+          });
+        }
+      })
+      .catch((err) => {
+        setClusterError(err.message || "Gagal memuat data clustering");
+        logger.error("MLDashboardPage", "Gagal memuat data clustering", { err });
+      })
+      .finally(() => setClusterLoading(false));
   }, [selectedClass]);
 
   return (
@@ -196,28 +308,55 @@ export default function MLDashboardPage() {
               Analisis prediksi akademik dan heatmap risiko siswa berdasarkan histori nilai.
             </p>
           </div>
-          {/* Dropdown pilih kelas */}
-          <div className="w-full sm:w-64">
-            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-              Pilih Kelas
-            </label>
-            <div className="relative">
-              <select
-                className="w-full h-10 px-3 pr-8 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-gray-900 appearance-none"
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Tombol Latih Model -- hanya untuk ADMINISTRATOR (FR-18) */}
+            {userRole === "ADMINISTRATOR" && (
+              <button
+                onClick={handleTrain}
+                disabled={training}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Latih ulang model K-Means & ONNX"
               >
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name} {c.academicYear?.year ? `- ${c.academicYear.year}` : ""}</option>
-                ))}
-              </select>
-              {/* Custom dropdown arrow */}
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                <Cpu className={`w-3.5 h-3.5 ${training ? "animate-spin" : ""}`} />
+                {training ? "Melatih..." : "Latih Model"}
+              </button>
+            )}
+            {/* Dropdown pilih kelas */}
+            <div className="w-full sm:w-64">
+              <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                Pilih Kelas
+              </label>
+              <div className="relative">
+                <select
+                  className="w-full h-10 px-3 pr-8 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-gray-900 appearance-none"
+                  value={selectedClass}
+                  onChange={(e) => setSelectedClass(e.target.value)}
+                >
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} {c.academicYear?.year ? `- ${c.academicYear.year}` : ""}</option>
+                  ))}
+                </select>
+                {/* Custom dropdown arrow */}
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Training Result Banner */}
+        {trainResult && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-green-800">Model berhasil dilatih ulang!</p>
+              <p className="text-xs text-green-600 mt-0.5">
+                Trained at: {new Date(trainResult.trainedAt).toLocaleString("id-ID")} -- Status: {trainResult.status}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Loading State ───────────────────────────────────────────── */}
         {loading && (
@@ -281,12 +420,129 @@ export default function MLDashboardPage() {
 
             {/* ── Risk Heatmap ────────────────────────────────────────── */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+              <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">Distribusi Risiko Siswa (Heatmap)</h3>
+                {/* Tombol Export CSV */}
+                <button
+                  onClick={exportRiskCsv}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-500 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                  title="Ekspor data risiko ke CSV"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Ekspor CSV
+                </button>
               </div>
               <div className="p-5">
-                {/* Komponen RiskHeatmap — render visual distribusi risiko */}
+                {/* Komponen RiskHeatmap -- render visual distribusi risiko */}
                 <RiskHeatmap results={riskData.results} summary={riskData.summary} />
+              </div>
+            </div>
+
+            {/* ── Clustering Pola Belajar (FR-17) ──────────────────────── */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-indigo-500" />
+                  Klaster Pola Belajar Siswa
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">Pengelompokan siswa berdasarkan pola akademik menggunakan K-Means clustering.</p>
+              </div>
+              <div className="p-5">
+                {/* Loading State Clustering */}
+                {clusterLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mr-3" />
+                    <p className="text-sm text-gray-500">Menganalisis pola belajar siswa...</p>
+                  </div>
+                )}
+
+                {/* Error / Model belum di-train */}
+                {!clusterLoading && clusterError && (
+                  <div className="text-center py-6">
+                    <XCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500 mb-1">{clusterError}</p>
+                    <p className="text-xs text-gray-400">
+                      {userRole === "ADMINISTRATOR"
+                        ? "Klik tombol \"Latih Model\" di atas untuk melatih model clustering terlebih dahulu."
+                        : "Hubungi administrator untuk melatih model clustering."}
+                    </p>
+                  </div>
+                )}
+
+                {/* Cluster Data Loaded */}
+                {!clusterLoading && !clusterError && clusterData && clusterData.clusters.length > 0 && (
+                  <div className="space-y-4">
+                    {/* Profile Cards -- satu card per cluster */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {clusterData.profiles.map((profile) => {
+                        const cluster = clusterData.clusters.find((c) => c.clusterId === profile.clusterId);
+                        const members = clusterData.assignments.filter((a) => a.clusterId === profile.clusterId);
+                        const isExpanded = expandedClusters.has(profile.clusterId);
+                        const colors = [
+                          { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", badge: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+                          { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", badge: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
+                          { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
+                        ];
+                        const color = colors[profile.clusterId % colors.length];
+
+                        return (
+                          <div key={profile.clusterId} className={`${color.bg} rounded-xl border ${color.border} p-4`}>
+                            {/* Cluster Header */}
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-2.5 h-2.5 rounded-full ${color.dot}`} />
+                                <h4 className={`text-sm font-bold ${color.text}`}>{profile.label}</h4>
+                              </div>
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${color.badge}`}>
+                                {cluster?.size || members.length} siswa
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed mb-3">{profile.description}</p>
+
+                            {/* Metrik Cluster */}
+                            <div className="grid grid-cols-2 gap-2 mb-3">
+                              <div className="bg-white/60 rounded-lg p-2">
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Rata-rata Nilai</p>
+                                <p className={`text-lg font-bold ${color.text}`}>{cluster?.avgKnowledge?.toFixed(1) ?? "-"}</p>
+                              </div>
+                              <div className="bg-white/60 rounded-lg p-2">
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Rata-rata Absensi</p>
+                                <p className={`text-lg font-bold ${color.text}`}>{cluster?.avgAbsence?.toFixed(1) ?? "-"}</p>
+                              </div>
+                            </div>
+
+                            {/* Daftar Siswa (Accordion) */}
+                            <button
+                              onClick={() => toggleClusterExpand(profile.clusterId)}
+                              className="w-full flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                              {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                              {isExpanded ? "Sembunyikan" : "Lihat"} daftar siswa
+                            </button>
+                            {isExpanded && (
+                              <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                                {members.map((m) => (
+                                  <li key={m.studentId} className="text-xs text-gray-700 flex items-center gap-1.5 py-0.5">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${color.dot} opacity-50`} />
+                                    {m.name}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state -- tidak ada data cluster */}
+                {!clusterLoading && !clusterError && (!clusterData || clusterData.clusters.length === 0) && (
+                  <div className="text-center py-6">
+                    <Layers className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Belum ada data klaster untuk kelas ini.</p>
+                  </div>
+                )}
               </div>
             </div>
           </>
