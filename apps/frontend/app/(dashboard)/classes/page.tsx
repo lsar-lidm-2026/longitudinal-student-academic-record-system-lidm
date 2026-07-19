@@ -139,7 +139,6 @@ export default function ClassesPage() {
   const totalStudents = classes.reduce((sum, c) => sum + (c._count?.students || 0), 0);
 
   return (
-    /* AuthGuard: hanya role tertentu yang bisa mengakses */
     <AuthGuard roles={["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"]}>
       <div className="space-y-6">
         {/* ── Header ────────────────────────────────────────────────── */}

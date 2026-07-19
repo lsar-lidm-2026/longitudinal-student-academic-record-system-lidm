@@ -40,6 +40,7 @@ import {
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 /** Tipe tab yang tersedia di halaman settings */
 type SettingsTab = "profil" | "keamanan" | "notifikasi" | "preferensi" | "akses";
@@ -55,6 +56,7 @@ const settingsMenu = [
 
 export default function SettingsPage() {
   /** Tab aktif yang sedang ditampilkan */
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<SettingsTab>("profil");
   /** Status koneksi API (checking/ok/error) */
   const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "error">("checking");
@@ -233,6 +235,11 @@ export default function SettingsPage() {
     }
   }
 
+  function handleLogout() {
+    api.setToken(null);
+    router.replace("/login");
+  }
+
   return (
     <div className="space-y-6">
       {/* ── Breadcrumb ────────────────────────────────────────────────── */}
@@ -287,17 +294,19 @@ export default function SettingsPage() {
           {/* ── Bantuan Section ────────────────────────────────────────── */}
           <div className="pt-4 mt-4 border-t border-gray-100">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 mb-2">
-              Bantuan
+              Akun
             </p>
             {/* Tombol Pusat Bantuan (placeholder) */}
             <button className="w-full flex items-center gap-3 p-3 rounded-xl text-left hover:bg-gray-50 transition-all">
               <HelpCircle className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600">Pusat Bantuan</span>
             </button>
-            {/* Tombol Keluar Akun (placeholder) */}
-            <button className="w-full flex items-center gap-3 p-3 rounded-xl text-left hover:bg-red-50 transition-all">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 p-3 rounded-xl text-left hover:bg-red-50 transition-all"
+            >
               <LogOut className="w-4 h-4 text-red-400" />
-              <span className="text-sm text-red-500">Keluar Akun</span>
+              <span className="text-sm text-red-500 font-medium">Keluar Akun</span>
             </button>
           </div>
         </div>
@@ -390,9 +399,6 @@ export default function SettingsPage() {
 
                 {/* ── Form Actions ────────────────────────────────────── */}
                 <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-100">
-                  <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                    Batalkan
-                  </button>
                   <button
                     onClick={handleSaveProfile}
                     disabled={savingProfile}

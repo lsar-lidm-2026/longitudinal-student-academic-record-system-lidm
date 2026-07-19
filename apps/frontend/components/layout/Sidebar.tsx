@@ -44,6 +44,8 @@ import {
   ChevronRight,
   LogOut,
   GraduationCap,
+  Calendar,
+  Shield,
 } from "lucide-react";
 import type { Role } from "../../types";
 
@@ -69,7 +71,7 @@ const menuItems = [
     label: "Data Siswa",
     href: "/students",
     icon: Users,
-    roles: ["GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
+    roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
   },
   {
     label: "AI Assistant",
@@ -81,7 +83,19 @@ const menuItems = [
     label: "Buku Induk",
     href: "/classes",
     icon: BookOpen,
-    roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
+    roles: ["ADMINISTRATOR", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
+  },
+  {
+    label: "Tahun Ajaran",
+    href: "/academic-years",
+    icon: Calendar,
+    roles: ["ADMINISTRATOR"] as Role[],
+  },
+  {
+    label: "Pengguna",
+    href: "/users",
+    icon: Shield,
+    roles: ["ADMINISTRATOR"] as Role[],
   },
   {
     label: "Pengaturan",

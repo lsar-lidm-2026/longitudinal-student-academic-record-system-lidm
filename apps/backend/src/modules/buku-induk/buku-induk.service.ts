@@ -82,6 +82,7 @@ export async function getPreview(studentId: string) {
           healthRecord: true;
         };
       }>) => ({
+        id: r.id,
         year: r.academicYear.year,     // Tahun ajaran
         semester: r.semester,           // Semester (1 = Ganjil, 2 = Genap)
         subjectScores: r.subjectScores, // Array nilai mata pelajaran

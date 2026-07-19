@@ -595,7 +595,7 @@ export default function StudentsPage() {
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden lg:table-cell">Kelas</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden xl:table-cell">NIS</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">Status</th>
-              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider w-14">Aksi</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider w-36">Aksi</th>
             </tr>
           </thead>
           <tbody>
@@ -651,14 +651,22 @@ export default function StudentsPage() {
                         Aktif
                       </span>
                     </td>
-                    {/* Tombol aksi: link Detail */}
+                    {/* Tombol aksi: link Detail & Nilai */}
                     <td className="py-3 px-4 text-center">
-                      <Link
-                        href={`/students/${student.id}`}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
-                      >
-                        Detail
-                      </Link>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Link
+                          href={`/students/${student.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          Detail
+                        </Link>
+                        <Link
+                          href={`/students/${student.id}/semester-records`}
+                          className="px-2 py-1 text-xs font-semibold text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 border border-blue-100/30 rounded-lg transition-all"
+                        >
+                          Nilai
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

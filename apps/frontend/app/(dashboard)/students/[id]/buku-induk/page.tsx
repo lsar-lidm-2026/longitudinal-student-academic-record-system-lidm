@@ -572,7 +572,7 @@ export default function BukuIndukPage() {
 
           {/* II. Data Akademik per Semester — iterasi setiap record */}
           {preview.semesterRecords.map((record) => (
-            <div key={record.id} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm print-card">
+            <div key={record.id || `${record.year}-${record.semester}`} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm print-card">
               <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <GraduationCap className="w-4 h-4 text-blue-500" />
                 {record.year} — Semester {record.semester === 1 ? "Ganjil" : "Genap"}

@@ -28,7 +28,7 @@
  */
 
 import { useEffect, useState, FormEvent } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -118,6 +118,7 @@ export default function SemesterRecordsPage() {
   /** ID siswa dari URL parameter */
   const params = useParams();
   /** Nama siswa (diambil dari profile) */
+  const router = useRouter();
   const [studentName, setStudentName] = useState("");
   /** Daftar semester records yang sudah ada */
   const [records, setRecords] = useState<SemesterRecord[]>([]);
@@ -373,6 +374,12 @@ export default function SemesterRecordsPage() {
 
       logger.info("SemesterRecordsPage", "Nilai dan kehadiran berhasil disimpan", { recordId: currentRecordId });
       toast.success("Data nilai dan kehadiran berhasil disimpan!");
+      setTimeout(() => {
+        router.back();
+        setTimeout(() => {
+          router.refresh();
+        }, 100);
+      }, 800);
     } catch (err: any) {
       logger.error("SemesterRecordsPage", "Gagal menyimpan data nilai & kehadiran", { err });
       toast.error(err.message || "Gagal menyimpan data");
@@ -808,7 +815,7 @@ export default function SemesterRecordsPage() {
                             }`}
                           >
                             {SCORE_OPTIONS.map((v) => (
-                              <option key={v} value={v} className={v < 75 && v > 0 ? "text-red-500" : "text-gray-700"}>
+                              <option key={v} value={v} className={v < 75 && v > 0 ? "text-red-500 font-medium" : "text-gray-700"}>
                                 {v}
                               </option>
                             ))}

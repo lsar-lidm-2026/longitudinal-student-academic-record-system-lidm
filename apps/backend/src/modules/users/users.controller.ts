@@ -28,8 +28,8 @@ export const usersController = new Elysia({ prefix: "/users" })
   .use(requireAuth)
   // ── GET /users ─────────────────────────────────────────────────────────────
   .get("/", async ({ user }) => {
-    // Hanya ADMINISTRATOR yang bisa melihat daftar user
-    checkRole(user, "ADMINISTRATOR");
+    // Diperbolehkan untuk ADMINISTRATOR, OPERATOR_SEKOLAH, GURU, KEPALA_SEKOLAH
+    checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH");
     logger.info({ requesterId: user.userId }, "List all users");
     const data = await authService.listUsers();
     return success(data);
