@@ -176,6 +176,14 @@ export default function SettingsPage() {
    * 2. Kirim PUT /users/:id dengan body { password: newPassword }.
    * 3. Jika sukses → tampilkan toast, reset form, log event.
    * 4. Jika gagal → tampilkan toast error.
+   *
+   * Catatan: currentPassword dikumpulkan di UI untuk UX (kesan verifikasi),
+   * tetapi TIDAK dikirim ke backend karena endpoint PUT /users/:id
+   * (auth.service.updateUser) hanya menerima field `password` tanpa verifikasi
+   * password lama. Backend belum memiliki endpoint PATCH /users/:id/password
+   * yang menerima { currentPassword, newPassword }.
+   * Jika keamanan perlu ditingkatkan di masa depan, buat endpoint baru
+   * di auth controller yang memverifikasi currentPassword sebelum update.
    */
   async function handleChangePassword(e: React.FormEvent) {
     // Mencegah reload halaman saat submit form

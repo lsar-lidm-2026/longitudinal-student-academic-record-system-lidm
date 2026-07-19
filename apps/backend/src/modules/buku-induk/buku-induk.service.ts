@@ -68,6 +68,9 @@ export async function getPreview(studentId: string) {
       nisn: student.nisn,                 // Nomor Induk Siswa Nasional
       name: student.name,                 // Nama lengkap siswa
       gender: student.gender,             // Jenis kelamin
+      birthDate: student.birthDate,       // Tanggal lahir (YYYY-MM-DD) — FR-04
+      address: student.address,           // Alamat domisili — FR-04
+      parentName: student.parentName,     // Nama orang tua/wali — FR-04
       className: student.class.name,       // Nama kelas
       photoUrl: student.photoUrl,         // URL foto siswa
     },

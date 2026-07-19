@@ -25,10 +25,7 @@ import Link from "next/link";
 import {
   Users,
   CheckCircle,
-  Clock,
-  ArrowRightLeft,
   Search,
-  SlidersHorizontal,
   Plus,
   ChevronLeft,
   ChevronRight,
@@ -84,6 +81,12 @@ export default function StudentsPage() {
   const [formClassId, setFormClassId] = useState("");
   /** Status loading saat submit — true = sedang mengirim data */
   const [submitting, setSubmitting] = useState(false);
+  /** Form: Tanggal Lahir — opsional (FR-04) */
+  const [formBirthDate, setFormBirthDate] = useState("");
+  /** Form: Alamat — opsional (FR-04) */
+  const [formAddress, setFormAddress] = useState("");
+  /** Form: Nama Orang Tua — opsional (FR-04) */
+  const [formParentName, setFormParentName] = useState("");
 
   // ── Import CSV Modal State ──────────────────────────────────────────────
   /** Tampilkan/sembunyikan modal import CSV */
@@ -112,6 +115,8 @@ export default function StudentsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Role user untuk menentukan visibilitas tombol import */
   const [userRole, setUserRole] = useState<Role | null>(null);
+  /** Total kelas dari dashboard/summary — untuk stat card */
+  const [totalClasses, setTotalClasses] = useState(0);
 
   // ── Debounced search ───────────────────────────────────────────────────
   /** Nilai pencarian yang sudah di-debounce 300ms — digunakan untuk trigger fetch */
@@ -132,12 +137,13 @@ export default function StudentsPage() {
   useEffect(() => {
     logger.info("StudentsPage", "Mengambil daftar kelas untuk filter dan import", {});
 
-    // Fetch classes + user role secara paralel
+    // Fetch classes + user role + dashboard summary secara paralel
     Promise.all([
       api.handleResponse(api.get<ClassItem[]>("/classes")),
       api.handleResponse(api.get<{ userId: string; role: Role }>("/auth/me")).catch(() => null),
+      api.handleResponse(api.get<{ totalClasses: number }>("/dashboard/summary")).catch(() => null),
     ])
-      .then(([classData, userData]) => {
+      .then(([classData, userData, summaryData]) => {
         setClasses(classData);
 
         // Build mapping nama kelas → ID kelas untuk fitur import CSV
@@ -151,6 +157,11 @@ export default function StudentsPage() {
         if (userData) {
           setUserRole(userData.role);
           logger.info("StudentsPage", "User role fetched", { role: userData.role });
+        }
+
+        if (summaryData && summaryData.totalClasses !== undefined) {
+          setTotalClasses(summaryData.totalClasses);
+          logger.info("StudentsPage", "Total kelas dimuat untuk stat card", { totalClasses: summaryData.totalClasses });
         }
       })
       .catch(() => {
@@ -355,33 +366,36 @@ export default function StudentsPage() {
 
       const result = await api.handleResponse(
         api.post<{
-          successCount: number;
-          errorCount: number;
-          errors: Array<{ row: number; nis?: string; nisn?: string; message: string }>;
+          imported: number;
+          errors: Array<{ index: number; message: string }>;
         }>("/students/bulk", { students })
       );
 
-      // Gabungkan error dari siswa tanpa classId
-      const allErrors = [...(result.errors || [])];
+      // Konversi response backend (imported + errors[index]) ke format frontend
+      // errors.index = 0-based, kita konversi ke 1-based untuk display
+      const backendErrors = (result.errors || []).map((e) => ({
+        row: e.index + 1,
+        message: e.message,
+      }));
+
+      // Gabungkan error dari siswa tanpa classId yang valid
       invalidStudents.forEach((s) => {
-        allErrors.push({
+        backendErrors.push({
           row: s.row,
-          nis: s.nis,
-          nisn: s.nisn,
           message: `Kelas "${s.className}" tidak ditemukan`,
         });
       });
 
       setImportResult({
-        successCount: result.successCount,
-        errorCount: result.errorCount + invalidStudents.length,
-        errors: allErrors,
+        successCount: result.imported,
+        errorCount: backendErrors.length,
+        errors: backendErrors,
       });
 
       setImportStep("result");
       logger.info("StudentsPage", "Bulk import selesai", {
-        successCount: result.successCount,
-        errorCount: result.errorCount + invalidStudents.length,
+        successCount: result.imported,
+        errorCount: backendErrors.length,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Gagal mengimport data";
@@ -439,14 +453,28 @@ export default function StudentsPage() {
     try {
       // Step 3: Hit API POST /students dengan data form
       // handleResponse akan melempar Error jika success=false dari server
+      // Sertakan field opsional (FR-04): birthDate, address, parentName — dikirim hanya jika diisi
+      const payload: Record<string, unknown> = {
+        name: formName.trim(),
+        nis: formNis.trim(),
+        nisn: formNisn.trim(),
+        gender: formGender,
+        classId: formClassId,
+      };
+      // Hanya kirim field opsional jika user mengisinya (backend expects null/omitted jika kosong)
+      if (formBirthDate) payload.birthDate = formBirthDate;
+      if (formAddress.trim()) payload.address = formAddress.trim();
+      if (formParentName.trim()) payload.parentName = formParentName.trim();
+
+      logger.info("StudentsPage", "Payload create student", {
+        ...payload,
+        birthDate: payload.birthDate || "(not set)",
+        address: payload.address || "(not set)",
+        parentName: payload.parentName || "(not set)",
+      });
+
       await api.handleResponse(
-        api.post<Student>("/students", {
-          name: formName.trim(),
-          nis: formNis.trim(),
-          nisn: formNisn.trim(),
-          gender: formGender,
-          classId: formClassId,
-        })
+        api.post<Student>("/students", payload)
       );
 
       // Step 4: Sukses — cleanup dan refresh
@@ -459,6 +487,9 @@ export default function StudentsPage() {
       setFormNisn("");
       setFormGender("L");
       setFormClassId("");
+      setFormBirthDate("");
+      setFormAddress("");
+      setFormParentName("");
       // Refresh daftar siswa agar data terbaru muncul
       fetchStudents();
       // Notifikasi sukses ke user
@@ -516,12 +547,11 @@ export default function StudentsPage() {
       </div>
 
       {/* ── Stats Cards ────────────────────────────────────────────────── */}
-      {/* Grid 4 kolom: total, aktif, cuti, pindah — walau masih statis */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Grid 2 kolom: Total Siswa (dari meta API) + Total Kelas (dari /dashboard/summary) */}
+      {/* Note: Stat cuti/pindah dihapus karena backend tidak menyediakan data tersebut */}
+      <div className="grid grid-cols-2 gap-4">
         <MiniStat icon={Users} label="Total Siswa" value={total} iconBg="bg-blue-50" iconColor="text-blue-500" />
-        <MiniStat icon={CheckCircle} label="Siswa Aktif" value={total} iconBg="bg-green-50" iconColor="text-green-500" />
-        <MiniStat icon={Clock} label="Siswa Cuti" value={0} iconBg="bg-amber-50" iconColor="text-amber-500" />
-        <MiniStat icon={ArrowRightLeft} label="Siswa Pindah" value={0} iconBg="bg-gray-50" iconColor="text-gray-500" />
+        <MiniStat icon={CheckCircle} label="Total Kelas" value={totalClasses} iconBg="bg-green-50" iconColor="text-green-500" />
       </div>
 
       {/* ── Search & Filters ──────────────────────────────────────────── */}
@@ -559,11 +589,6 @@ export default function StudentsPage() {
             </option>
           ))}
         </select>
-        {/* Tombol filter tambahan (masih placeholder) */}
-        <button className="h-10 px-3 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 transition-colors flex items-center gap-1.5">
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          Filter
-        </button>
         {/* Tombol Import CSV — hanya untuk ADMINISTRATOR dan OPERATOR_SEKOLAH */}
         {userRole && (userRole === "ADMINISTRATOR" || userRole === "OPERATOR_SEKOLAH") && (
           <button
@@ -881,6 +906,54 @@ export default function StudentsPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* ── Field Opsional (FR-04) ───────────────────────────────── */}
+              {/* Tanggal Lahir — date input, optional */}
+              <div>
+                <label htmlFor="student-birth-date" className="block text-sm font-medium text-gray-700 mb-1">
+                  Tanggal Lahir <span className="text-gray-400 text-xs">(opsional)</span>
+                </label>
+                <input
+                  id="student-birth-date"
+                  type="date"
+                  value={formBirthDate}
+                  onChange={(e) => setFormBirthDate(e.target.value)}
+                  disabled={submitting}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all text-gray-600 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
+              </div>
+
+              {/* Alamat — textarea, optional */}
+              <div>
+                <label htmlFor="student-address" className="block text-sm font-medium text-gray-700 mb-1">
+                  Alamat <span className="text-gray-400 text-xs">(opsional)</span>
+                </label>
+                <textarea
+                  id="student-address"
+                  value={formAddress}
+                  onChange={(e) => setFormAddress(e.target.value)}
+                  placeholder="Alamat domisili siswa"
+                  disabled={submitting}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-400 disabled:bg-gray-50 disabled:cursor-not-allowed resize-none"
+                />
+              </div>
+
+              {/* Nama Orang Tua — text input, optional */}
+              <div>
+                <label htmlFor="student-parent-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Nama Orang Tua <span className="text-gray-400 text-xs">(opsional)</span>
+                </label>
+                <input
+                  id="student-parent-name"
+                  type="text"
+                  value={formParentName}
+                  onChange={(e) => setFormParentName(e.target.value)}
+                  placeholder="Nama orang tua atau wali"
+                  disabled={submitting}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-400 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
               </div>
             </div>
 

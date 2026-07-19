@@ -103,7 +103,7 @@ export async function getById(id: string) {
 
 /**
  * Create a new student with duplicate and relation validation.
- * @param data - Student creation payload (nis, nisn, name, gender, classId)
+ * @param data - Student creation payload (nis, nisn, name, gender, classId, birthDate?, address?, parentName?)
  * @throws NotFoundError if classId references a non-existent class
  * @throws ConflictError if NIS or NISN already exists
  */
@@ -113,6 +113,9 @@ export async function create(data: {
   name: string;
   gender: string;
   classId: string;
+  birthDate?: string;   // Format: YYYY-MM-DD — FR-04
+  address?: string;     // Alamat domisili — FR-04
+  parentName?: string;  // Nama orang tua/wali — FR-04
 }) {
   logger.info({ data }, "Student service: creating student");
 
@@ -137,7 +140,19 @@ export async function create(data: {
     throw new ConflictError("NISN already exists");
   }
 
-  const student = await prisma.student.create({ data });
+  // Build create payload — spread required fields + optional fields if present
+  const createData: any = {
+    nis: data.nis,
+    nisn: data.nisn,
+    name: data.name,
+    gender: data.gender,
+    classId: data.classId,
+  };
+  if (data.birthDate !== undefined) createData.birthDate = data.birthDate;
+  if (data.address !== undefined) createData.address = data.address;
+  if (data.parentName !== undefined) createData.parentName = data.parentName;
+
+  const student = await prisma.student.create({ data: createData });
   logger.info({ studentId: student.id, nis: data.nis, nisn: data.nisn }, "Student created successfully");
   return student;
 }
@@ -145,7 +160,7 @@ export async function create(data: {
 /**
  * Update an existing student with optional field overrides.
  * @param id - Student UUID
- * @param data - Partial update fields
+ * @param data - Partial update fields (nis, nisn, name, gender, classId, birthDate, address, parentName)
  * @throws NotFoundError if student or referenced class does not exist
  */
 /**
@@ -172,6 +187,9 @@ export async function bulkCreate(
     name: string;
     gender: string;
     classId: string;
+    birthDate?: string;   // Format: YYYY-MM-DD — FR-04
+    address?: string;     // Alamat domisili — FR-04
+    parentName?: string;  // Nama orang tua/wali — FR-04
   }>
 ): Promise<BulkCreateResult> {
   logger.info({ count: studentsData.length }, "Student service: bulk creating students");
@@ -217,8 +235,20 @@ export async function bulkCreate(
         throw new ConflictError(`NISN "${data.nisn}" sudah terdaftar`);
       }
 
+      // Build create payload — required fields + optional fields if present
+      const createPayload: any = {
+        nis: data.nis,
+        nisn: data.nisn,
+        name: data.name,
+        gender: data.gender,
+        classId: data.classId,
+      };
+      if (data.birthDate !== undefined) createPayload.birthDate = data.birthDate;
+      if (data.address !== undefined) createPayload.address = data.address;
+      if (data.parentName !== undefined) createPayload.parentName = data.parentName;
+
       // Create student
-      await prisma.student.create({ data });
+      await prisma.student.create({ data: createPayload });
       result.successCount++;
       logger.debug({ row, nis: data.nis, nisn: data.nisn }, "Bulk create: student created");
     } catch (err: any) {
@@ -238,7 +268,16 @@ export async function bulkCreate(
 
 export async function update(
   id: string,
-  data: { nis?: string; nisn?: string; name?: string; gender?: string; classId?: string }
+  data: {
+    nis?: string;
+    nisn?: string;
+    name?: string;
+    gender?: string;
+    classId?: string;
+    birthDate?: string;   // Format: YYYY-MM-DD — FR-04
+    address?: string;     // Alamat domisili — FR-04
+    parentName?: string;  // Nama orang tua/wali — FR-04
+  }
 ) {
   logger.info({ studentId: id, data }, "Student service: updating student");
   // Ensure student exists before attempting update
@@ -253,7 +292,18 @@ export async function update(
     }
   }
 
-  const student = await prisma.student.update({ where: { id }, data });
+  // Build update payload — only include fields that are explicitly provided
+  const updateData: any = {};
+  if (data.nis !== undefined) updateData.nis = data.nis;
+  if (data.nisn !== undefined) updateData.nisn = data.nisn;
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.gender !== undefined) updateData.gender = data.gender;
+  if (data.classId !== undefined) updateData.classId = data.classId;
+  if (data.birthDate !== undefined) updateData.birthDate = data.birthDate;
+  if (data.address !== undefined) updateData.address = data.address;
+  if (data.parentName !== undefined) updateData.parentName = data.parentName;
+
+  const student = await prisma.student.update({ where: { id }, data: updateData });
   logger.info({ studentId: id }, "Student updated successfully");
   return student;
 }

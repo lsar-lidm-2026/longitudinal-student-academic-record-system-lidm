@@ -32,14 +32,17 @@ import { NotFoundError } from "../../common/error";
 export async function list() {
   logger.debug("class.service.list — start");
 
-  // Ambil semua kelas dengan relasi tahun ajaran, wali kelas, dan hitungan siswa
+  // Ambil semua kelas — filter ke tahun ajaran aktif secara default
+  // Untuk akses historical data, frontend bisa tambah query param ?all=true
+  const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
   const classes = await prisma.class.findMany({
+    where: activeYear ? { academicYearId: activeYear.id } : undefined,
     include: {
       academicYear: { select: { year: true } },
       homeroomTeacher: { select: { id: true, name: true } },
       _count: { select: { students: true } },
     },
-    // Urut: tahun ajaran terbaru dulu, lalu nama kelas A-Z
+    // Urutkan: tahun terbaru dulu, lalu nama kelas ascending
     orderBy: [{ academicYear: { year: "desc" } }, { name: "asc" }],
   });
 

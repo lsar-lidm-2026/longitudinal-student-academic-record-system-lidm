@@ -134,6 +134,12 @@ export interface Student {
   name: string;
   /** Jenis kelamin: L = Laki-laki, P = Perempuan */
   gender: "L" | "P";
+  /** Tanggal lahir (FR-04) — opsional, diisi saat registrasi */
+  birthDate?: string | null;
+  /** Alamat domisili (FR-04) — opsional, diisi saat registrasi */
+  address?: string | null;
+  /** Nama orang tua / wali (FR-04) — opsional, diisi saat registrasi */
+  parentName?: string | null;
   /** ID kelas saat ini */
   classId: string;
   /** URL foto siswa (opsional) */

@@ -32,10 +32,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   User,
-  Mail,
-  Phone,
   MapPin,
   Calendar,
+  Users,
   Award,
   Download,
   Edit,
@@ -602,11 +601,11 @@ export default function StudentDetailPage() {
               </p>
 
               {/* Detail informasi siswa — dalam baris dengan ikon */}
+              {/* birthDate, address, parentName adalah field opsional dari backend (FR-04) */}
               <div className="mt-5 space-y-3">
-                <InfoRow icon={Mail} label="Email" value={`${student.nis}@siswa.sch.id`} />
-                <InfoRow icon={Phone} label="Telepon" value="-" />
-                <InfoRow icon={MapPin} label="Alamat" value="-" />
-                <InfoRow icon={Calendar} label="Tanggal Lahir" value="-" />
+                <InfoRow icon={Calendar} label="Tanggal Lahir" value={formatBirthDate(student.birthDate)} />
+                <InfoRow icon={MapPin} label="Alamat" value={student.address || "-"} />
+                <InfoRow icon={Users} label="Nama Orang Tua" value={student.parentName || "-"} />
                 <InfoRow icon={Award} label="Jenis Kelamin" value={student.gender === "L" ? "Laki-laki" : "Perempuan"} />
               </div>
             </div>
@@ -1178,4 +1177,38 @@ function formatRelativeTime(dateStr: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+/**
+ * formatBirthDate — Format ISO date string menjadi format tanggal Indonesia.
+ * Contoh: "2020-03-12" → "12 Maret 2020"
+ * Jika dateStr null/undefined → return "-"
+ *
+ * @param dateStr - ISO date string dari server (e.g. "2020-03-12")
+ * @returns string tanggal dalam format "DD Bulan YYYY" atau "-" jika tidak ada
+ */
+function formatBirthDate(dateStr: string | null | undefined): string {
+  if (!dateStr) {
+    logger.debug("StudentDetailPage", "birthDate kosong — menampilkan fallback '-'", {});
+    return "-";
+  }
+  try {
+    const date = new Date(dateStr);
+    // Validasi: pastikan date valid (NaN check)
+    if (isNaN(date.getTime())) {
+      logger.warn("StudentDetailPage", "birthDate tidak valid", { dateStr });
+      return "-";
+    }
+    // Format ke locale Indonesia: "12 Maret 2020"
+    const formatted = date.toLocaleDateString("id-ID", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    logger.debug("StudentDetailPage", "birthDate berhasil diformat", { dateStr, formatted });
+    return formatted;
+  } catch (err) {
+    logger.error("StudentDetailPage", "Gagal memformat birthDate", { err, dateStr });
+    return "-";
+  }
 }

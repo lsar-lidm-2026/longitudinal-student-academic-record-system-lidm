@@ -29,6 +29,7 @@ import logger from "../../lib/logger";
 
 /**
  * Antarmuka input untuk satu siswa dalam bulk import.
+ * birthDate, address, parentName bersifat opsional (FR-04).
  */
 export interface BulkStudentInput {
   name: string;
@@ -36,6 +37,9 @@ export interface BulkStudentInput {
   nisn: string;
   gender: string;
   classId: string;
+  birthDate?: string;   // Format: YYYY-MM-DD — FR-04
+  address?: string;     // Alamat domisili — FR-04
+  parentName?: string;  // Nama orang tua/wali — FR-04
 }
 
 /**
@@ -239,13 +243,21 @@ export async function importStudents(students: BulkStudentInput[]): Promise<Bulk
   const importCount = await prisma.$transaction(async (tx) => {
     // Gunakan createMany untuk insert batch yang efisien
     const result = await tx.student.createMany({
-      data: finalStudents.map((s) => ({
-        name: s.name.trim(),
-        nis: s.nis.trim(),
-        nisn: s.nisn.trim(),
-        gender: s.gender === "Laki-laki" ? "L" : s.gender === "Perempuan" ? "P" : s.gender,
-        classId: s.classId,
-      })),
+      data: finalStudents.map((s) => {
+        // Build payload with required fields
+        const payload: any = {
+          name: s.name.trim(),
+          nis: s.nis.trim(),
+          nisn: s.nisn.trim(),
+          gender: s.gender === "Laki-laki" ? "L" : s.gender === "Perempuan" ? "P" : s.gender,
+          classId: s.classId,
+        };
+        // Include optional FR-04 fields if present
+        if (s.birthDate !== undefined) payload.birthDate = s.birthDate;
+        if (s.address !== undefined) payload.address = s.address;
+        if (s.parentName !== undefined) payload.parentName = s.parentName;
+        return payload;
+      }),
     });
 
     return result.count;

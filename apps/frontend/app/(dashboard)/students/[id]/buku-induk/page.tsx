@@ -8,17 +8,22 @@
  * Layout mirip dokumen cetak dengan area signature dan siap di-print.
  *
  * Alur lengkap:
- * 1. Saat mount, refresh() mengambil dua data secara paralel:
+ * 1. Saat mount, refresh() mengambil tiga data secara paralel:
  *    - /students/:id/buku-induk-preview → PreviewData (biodata + semesterRecords)
  *    - /students/:id/validation-status → ValidationItem[] (status kelengkapan)
+ *    - /upload/students/:id/documents → StudentDocument[] (dokumen siswa)
  * 2. Data preview ditampilkan dalam layout dua kolom:
- *    - Kiri: kartu identitas siswa + info dokumen + riwayat log.
+ *    - Kiri: kartu identitas siswa + info dokumen + upload dokumen.
  *    - Kanan: data akademik per semester (nilai, kehadiran, prestasi)
- *      + area signature + footer.
- * 3. Tombol Cetak/Unduh PDF menggunakan window.print().
+ *      + dokumen siswa + area signature + footer.
+ * 3. Tombol Unduh PDF menyalin data terformat ke clipboard (copyFormattedData).
+ *    Tombol Cetak menggunakan window.print().
+ *    Tombol Salin Data juga menyalin data terformat ke clipboard.
  * 4. Class .no-print pada elemen UI (breadcrumb, tombol) agar tidak ikut
  *    tercetak saat print.
- * 5. Loading: spinner. Error: pesan + retry.
+ * 5. CSS @media print mengatur layout A4, sembunyikan elemen no-print,
+ *    pertahankan warna, dan tambahkan page counter.
+ * 6. Loading: spinner. Error: pesan + retry.
  */
 
 import { useEffect, useState, useRef } from "react";
@@ -30,16 +35,13 @@ import {
   Download,
   Printer,
   FileText,
-  Clock,
   User,
   GraduationCap,
-  Heart,
   Trophy,
   Upload,
   Paperclip,
   Loader2,
   Copy,
-  CheckCircle2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -449,8 +451,8 @@ export default function BukuIndukPage() {
         <div className="flex gap-2 no-print">
           <button
             onClick={() => {
-              logger.info("BukuIndukPage", "Unduh PDF / Cetak diklik — memicu window.print()");
-              window.print();
+              logger.info("BukuIndukPage", "Unduh PDF diklik — menyalin data sebagai teks");
+              copyFormattedData();
             }}
             className="inline-flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
           >
@@ -538,17 +540,7 @@ export default function BukuIndukPage() {
             </div>
           </div>
 
-          {/* Riwayat Log — aktivitas terbaru (static untuk MVP) */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2 mb-3">
-              <Clock className="w-4 h-4 text-blue-500" />
-              Riwayat Log
-            </h3>
-            <div className="space-y-2">
-              <LogItem text="Dokumen digenerate" time="Baru saja" />
-              <LogItem text="Data nilai diperbarui" time="Hari ini" />
-            </div>
-          </div>
+          {/* Riwayat Log — tidak ditampilkan karena belum ada endpoint backend */}
         </div>
 
         {/* ====== Right: Document Content ====== */}
@@ -832,23 +824,6 @@ function DocRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center py-2.5 border-b border-gray-50 last:border-0">
       <span className="text-xs text-gray-400 uppercase tracking-wider w-44 shrink-0">{label}</span>
       <span className="text-sm text-gray-700">{value}</span>
-    </div>
-  );
-}
-
-/**
- * LogItem — Item riwayat log dengan bullet point biru.
- * @param text - Deskripsi aktivitas
- * @param time - Waktu relatif aktivitas
- */
-function LogItem({ text, time }: { text: string; time: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-      <div className="flex-1">
-        <p className="text-sm text-gray-700">{text}</p>
-        <p className="text-[10px] text-gray-400 uppercase">{time}</p>
-      </div>
     </div>
   );
 }
