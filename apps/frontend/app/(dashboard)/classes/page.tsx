@@ -118,26 +118,31 @@ export default function ClassesPage() {
     setError(null);
     logger.info("ClassesPage", "Memuat data kelas");
     const url = selectedYearId ? `/classes?yearId=${selectedYearId}` : "/classes";
-    Promise.all([
-      // Ambil daftar kelas
-      api.handleResponse(api.get<ClassItem[]>(url)),
-      // Ambil daftar semua user (untuk opsi wali kelas)
-      api.handleResponse(api.get<UserType[]>("/users")),
-      // Ambil role user yang login
-      api.get<{ id: string; username: string; name: string; role: string; isActive: boolean }>("/auth/me"),
-    ])
-      .then(([classesData, usersData, meRes]) => {
-        setClasses(classesData);
-        // Filter hanya user dengan role GURU untuk dropdown wali kelas
-        const guruOnly = usersData.filter((u) => u.role === "GURU");
-        setTeachers(guruOnly);
-        if (meRes.success && meRes.data) {
-          setCurrentUserRole(meRes.data.role);
+    
+    // Ambil role user dulu — untuk tahu apakah perlu fetch users (hanya admin/operator)
+    api.get<{ id: string; username: string; name: string; role: string; isActive: boolean }>("/auth/me")
+      .then((meRes) => {
+        const role = meRes.success && meRes.data ? meRes.data.role : null;
+        setCurrentUserRole(role);
+        
+        // Hanya admin/operator yang fetch users untuk dropdown wali kelas
+        // GURU dan KEPSEK tidak perlu daftar semua user
+        const promises: Promise<any>[] = [api.handleResponse(api.get<ClassItem[]>(url))];
+        if (role === "ADMINISTRATOR" || role === "OPERATOR_SEKOLAH") {
+          promises.push(api.handleResponse(api.get<UserType[]>("/users")));
+        } else {
+          promises.push(Promise.resolve([]));
         }
-        logger.info("ClassesPage", "Data berhasil dimuat", {
-          classesCount: classesData.length,
-          teachersCount: guruOnly.length,
-          role: meRes.data?.role,
+        
+        return Promise.all(promises).then(([classesData, usersData]) => {
+          setClasses(classesData);
+          const guruOnly = Array.isArray(usersData) ? usersData.filter((u: UserType) => u.role === "GURU") : [];
+          setTeachers(guruOnly);
+          logger.info("ClassesPage", "Data berhasil dimuat", {
+            classesCount: classesData.length,
+            teachersCount: guruOnly.length,
+            role,
+          });
         });
       })
       .catch((err) => {
