@@ -26,7 +26,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
-import { Users, Plus, Pencil, X, Power, PowerOff, ShieldCheck } from "lucide-react";
+import { Users, Plus, Pencil, X, Power, PowerOff, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import type { User, Role } from "@/types";
 
 /** Konfigurasi tampilan untuk setiap role — warna badge dan label */
@@ -58,6 +58,9 @@ export default function UsersPage() {
     name: "",
     role: "GURU" as Role,
   });
+
+  /** Toggle show/hide password on create form */
+  const [showNewUserPw, setShowNewUserPw] = useState(false);
 
   /**
    * load — Mengambil daftar pengguna dari API.
@@ -282,8 +285,10 @@ export default function UsersPage() {
                 {/* Empty state */}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
-                      Belum ada pengguna terdaftar.
+                    <td colSpan={5} className="py-12 text-center">
+                      <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-sm text-gray-500">Belum ada pengguna terdaftar.</p>
+                      <p className="text-xs text-gray-400 mt-1">Tambahkan pengguna baru melalui form di samping.</p>
                     </td>
                   </tr>
                 )}
@@ -339,15 +344,24 @@ export default function UsersPage() {
                   {!editingUser && (
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
-                      <input
-                        type="password"
-                        value={form.password}
-                        onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                        required
-                        minLength={6}
-                        disabled={saving}
-                        className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showNewUserPw ? "text" : "password"}
+                          value={form.password}
+                          onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                          required
+                          minLength={6}
+                          disabled={saving}
+                          className="w-full h-10 pl-3 pr-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewUserPw(!showNewUserPw)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          {showNewUserPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
                   )}
 

@@ -40,6 +40,8 @@ import {
   Moon,
   Check,
   X,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -94,6 +96,9 @@ export default function SettingsPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   /** Pesan error validasi form (inline) */
   const [passwordError, setPasswordError] = useState("");
+
+  /** Toggle show/hide untuk masing-masing field password */
+  const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
 
   // ── Notification toggle state ──────────────────────────────────────
   const [notifEmail, setNotifEmail] = useState(true);
@@ -551,15 +556,24 @@ export default function SettingsPage() {
                     <label htmlFor="currentPassword" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                       Password Saat Ini
                     </label>
-                    <input
-                      id="currentPassword"
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => { setCurrentPassword(e.target.value); setPasswordError(""); }}
-                      required
-                      placeholder="Masukkan password saat ini"
-                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
-                    />
+                    <div className="relative">
+                      <input
+                        id="currentPassword"
+                        type={showPw.current ? "text" : "password"}
+                        value={currentPassword}
+                        onChange={(e) => { setCurrentPassword(e.target.value); setPasswordError(""); }}
+                        required
+                        placeholder="Masukkan password saat ini"
+                        className="w-full h-10 pl-3 pr-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPw({...showPw, current: !showPw.current})}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPw.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
 
                   {/* New Password */}
@@ -567,16 +581,25 @@ export default function SettingsPage() {
                     <label htmlFor="newPassword" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                       Password Baru
                     </label>
-                    <input
-                      id="newPassword"
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => { setNewPassword(e.target.value); setPasswordError(""); }}
-                      required
-                      minLength={6}
-                      placeholder="Minimal 6 karakter"
-                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
-                    />
+                    <div className="relative">
+                      <input
+                        id="newPassword"
+                        type={showPw.new ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(e) => { setNewPassword(e.target.value); setPasswordError(""); }}
+                        required
+                        minLength={6}
+                        placeholder="Minimal 6 karakter"
+                        className="w-full h-10 pl-3 pr-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPw({...showPw, new: !showPw.new})}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPw.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Confirm New Password */}
@@ -584,15 +607,24 @@ export default function SettingsPage() {
                     <label htmlFor="confirmPassword" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                       Konfirmasi Password Baru
                     </label>
-                    <input
-                      id="confirmPassword"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(""); }}
-                      required
-                      placeholder="Ketik ulang password baru"
-                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
-                    />
+                    <div className="relative">
+                      <input
+                        id="confirmPassword"
+                        type={showPw.confirm ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(""); }}
+                        required
+                        placeholder="Ketik ulang password baru"
+                        className="w-full h-10 pl-3 pr-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPw({...showPw, confirm: !showPw.confirm})}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPw.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Inline validation error — muncul jika validasi client-side gagal */}

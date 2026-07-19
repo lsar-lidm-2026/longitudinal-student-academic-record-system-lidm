@@ -31,7 +31,8 @@ model User {
   password  String   // Hashed password untuk JWT auth (FR-01)
   name      String
   role      Role     @default(GURU)
-  isActive  Boolean  @default(true)
+  isActive              Boolean  @default(true)
+  refreshTokenVersion   Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

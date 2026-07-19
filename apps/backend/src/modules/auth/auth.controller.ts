@@ -125,7 +125,7 @@ export const authController = new Elysia({ prefix: "/auth" })
       return success({
         message: sent
           ? "Tautan reset password telah dikirim ke email Anda."
-          : "Permintaan reset password diterima. Silakan cek email Anda.",
+          : "Gagal mengirim email. Silakan hubungi administrator sekolah untuk mereset password Anda.",
       });
     },
     {

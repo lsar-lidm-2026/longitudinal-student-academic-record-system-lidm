@@ -33,6 +33,7 @@
 
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -46,6 +47,7 @@ import {
   GraduationCap,
   Calendar,
   Shield,
+  Menu,
 } from "lucide-react";
 import type { Role } from "../../types";
 
@@ -135,8 +137,31 @@ export function Sidebar({ role, userName, onLogout }: SidebarProps) {
   // Filter menu items berdasarkan role user
   const visibleItems = menuItems.filter((item) => item.roles.includes(role));
 
+  // Mobile sidebar toggle state
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   return (
-    <aside className="w-60 bg-white border-r border-gray-100 h-screen flex flex-col shrink-0">
+    <>
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-3 left-3 z-50 lg:hidden p-2 bg-white rounded-lg border border-gray-200 shadow-sm"
+        aria-label="Buka menu"
+      >
+        <Menu className="w-5 h-5 text-gray-600" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside className={`
+        fixed lg:sticky top-0 left-0 z-50 h-screen
+        w-60 bg-white border-r border-gray-100 flex flex-col shrink-0
+        transition-transform duration-200
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
       {/* Logo Section */}
       <div className="px-5 py-5 border-b border-gray-100">
         <Link href="/" className="flex items-center gap-2.5">
@@ -212,5 +237,6 @@ export function Sidebar({ role, userName, onLogout }: SidebarProps) {
         </div>
       </div>
     </aside>
+    </>
   );
 }

@@ -43,11 +43,12 @@ export interface ApiResponse<T = unknown> {
  * Digunakan oleh requireAuth middleware untuk menyimpan informasi user ke context.
  */
 export interface JwtPayload {
-  userId: string;    // UUID user dari database
-  username: string;  // Username untuk login
-  role: Role;        // Role user (Administrator / Guru) — dari Prisma enum
-  name: string;      // Nama lengkap user
-  iat?: number;      // Issued at timestamp (opsional, dari JWT)
+  userId: string;              // UUID user dari database
+  username: string;            // Username untuk login
+  role: Role;                  // Role user (Administrator / Guru) — dari Prisma enum
+  name: string;                // Nama lengkap user
+  refreshTokenVersion?: number; // Versi refresh token untuk deteksi rotasi
+  iat?: number;                // Issued at timestamp (opsional, dari JWT)
 }
 
 /**

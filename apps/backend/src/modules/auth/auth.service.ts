@@ -92,15 +92,16 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw new UnauthorizedError("Invalid username or password");
   }
 
-  // Siapkan JWT payload dari data user
+  // Siapkan JWT payload dari data user — termasuk refreshTokenVersion
   const payload: JwtPayload = {
     userId: user.id,
     username: user.username,
     role: user.role as Role,
     name: user.name,
+    refreshTokenVersion: user.refreshTokenVersion,
   };
 
-  logger.info({ userId: user.id }, "auth.service.login — success, generating tokens");
+  logger.info({ userId: user.id, version: user.refreshTokenVersion }, "auth.service.login — success, generating tokens");
 
   // Generate token pair dan return
   return {
@@ -263,15 +264,31 @@ export async function refresh(refreshToken: string) {
       throw new UnauthorizedError("Invalid refresh token");
     }
 
-    // Siapkan JWT payload baru
+    // Validasi refreshTokenVersion — jika token curian dipakai, versi tidak akan cocok
+    if (decoded.refreshTokenVersion !== undefined && decoded.refreshTokenVersion !== user.refreshTokenVersion) {
+      logger.warn(
+        { userId: user.id, tokenVersion: decoded.refreshTokenVersion, dbVersion: user.refreshTokenVersion },
+        "auth.service.refresh — refresh token version mismatch (possible token reuse)"
+      );
+      throw new UnauthorizedError("Invalid refresh token");
+    }
+
+    // Increment refreshTokenVersion untuk menginvalidasi token lama
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshTokenVersion: { increment: 1 } },
+    });
+
+    // Siapkan JWT payload baru dengan versi yang sudah diincrement
     const payload: JwtPayload = {
-      userId: user.id,
-      username: user.username,
-      role: user.role as Role,
-      name: user.name,
+      userId: updatedUser.id,
+      username: updatedUser.username,
+      role: updatedUser.role as Role,
+      name: updatedUser.name,
+      refreshTokenVersion: updatedUser.refreshTokenVersion,
     };
 
-    logger.info({ userId: user.id }, "auth.service.refresh — success, generating new tokens");
+    logger.info({ userId: user.id, newVersion: updatedUser.refreshTokenVersion }, "auth.service.refresh — success, version incremented, generating new tokens");
 
     // Generate token pair baru
     return {
@@ -298,9 +315,9 @@ export async function refresh(refreshToken: string) {
  */
 export async function updateUser(
   id: string,
-  data: { name?: string; role?: Role; isActive?: boolean }
+  data: { name?: string; role?: Role; isActive?: boolean; password?: string }
 ) {
-  logger.info({ userId: id, updates: data }, "auth.service.updateUser — start");
+  logger.info({ userId: id, updates: { ...data, password: data.password ? "(redacted)" : undefined } }, "auth.service.updateUser — start");
 
   // Pastikan user ada sebelum diupdate
   const user = await prisma.user.findUnique({ where: { id } });
@@ -309,12 +326,24 @@ export async function updateUser(
     throw new NotFoundError("User not found");
   }
 
-  logger.info({ userId: id }, "auth.service.updateUser — updating user");
+  // Bangun data update — hanya set field yang disediakan
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.role !== undefined) updateData.role = data.role;
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
-  // Update user dengan data yang diberikan
+  // Hash password jika disertakan
+  if (data.password) {
+    updateData.password = await Bun.password.hash(data.password, { algorithm: "bcrypt", cost: 10 });
+    logger.info({ userId: id }, "auth.service.updateUser — password changed");
+  }
+
+  logger.info({ userId: id, fields: Object.keys(updateData) }, "auth.service.updateUser — updating user");
+
+  // Update user dengan data yang sudah dibangun
   return prisma.user.update({
     where: { id },
-    data,
+    data: updateData,
     select: {
       id: true,
       username: true,

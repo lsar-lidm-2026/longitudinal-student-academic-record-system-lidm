@@ -72,6 +72,8 @@ export function verifyToken(token: string): JwtPayload {
     username: String(decoded.username ?? ""),
     role: String(decoded.role ?? "") as JwtPayload["role"],
     name: String(decoded.name ?? ""),
+    // refreshTokenVersion bersifat opsional — untuk validasi refresh token
+    refreshTokenVersion: typeof decoded.refreshTokenVersion === "number" ? decoded.refreshTokenVersion : undefined,
     // iat bersifat opsional — hanya disertakan jika ada dan bertipe number
     iat: typeof decoded.iat === "number" ? decoded.iat : undefined,
   };
@@ -83,13 +85,14 @@ export function verifyToken(token: string): JwtPayload {
  * @returns Signed JWT string dengan expiry 30d.
  */
 export function generateRefreshToken(payload: JwtPayload): string {
-  logger.info({ userId: payload.userId, role: payload.role }, "Generating refresh token (30d)");
+  logger.info({ userId: payload.userId, role: payload.role, version: payload.refreshTokenVersion }, "Generating refresh token (7d)");
   return jwt.sign(
     {
       userId: payload.userId,
       username: payload.username,
       role: payload.role,
       name: payload.name,
+      refreshTokenVersion: payload.refreshTokenVersion,
       iat: Math.floor(Date.now() / 1000),
     },
     env.jwtSecret,

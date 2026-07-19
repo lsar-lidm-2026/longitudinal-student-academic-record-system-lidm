@@ -27,6 +27,7 @@
 import { Elysia, t } from "elysia";               // Elysia web framework + validation
 import { requireAuth } from "../../middleware/auth"; // JWT auth middleware
 import { success, error as errorResponse } from "../../common/response"; // Standar response formatter
+import { ValidationError } from "../../common/error";
 import {
   uploadStudentPhoto,
   uploadAchievementAttachment,
@@ -35,6 +36,8 @@ import {
 } from "./upload.service";                          // Upload business logic functions
 import type { JwtPayload } from "../../common/types"; // JWT payload type definition
 import logger from "../../lib/logger";              // Pino logger instance
+import fs from "fs/promises";                      // File system operations
+import { env } from "../../config/env";             // Environment configuration
 
 /**
  * UploadController — instance Elysia dengan prefix "/upload".
@@ -44,6 +47,67 @@ import logger from "../../lib/logger";              // Pino logger instance
  */
 export const uploadController = new Elysia({ prefix: "/upload" })
   .use(requireAuth)
+
+  // ── Profile Photo (Logged-in User) ────────────────────────────────
+  /**
+   * POST /upload/profile/photo
+   *
+   * Upload foto profil user yang sedang login.
+   * Menerima multipart/form-data dengan field `file` (tipe image: jpeg/png/webp).
+   * File disimpan di {modelPath}/profiles/.
+   * Rute ini HARUS sebelum /:id/photo untuk menghindari konflik path.
+   *
+   * @param body.file - File gambar (max 2MB)
+   * @returns - { photoUrl }
+   */
+  .post(
+    "/profile/photo",
+    async ({ body, user, set }) => {
+      logger.info({ userId: user.userId }, "Upload controller: profile photo upload started");
+      try {
+        const file = body.file;
+        if (!file || file.size === 0) {
+          set.status = 400;
+          return errorResponse("VALIDATION_ERROR", "File tidak ditemukan");
+        }
+
+        // Validasi tipe file — hanya gambar yang diizinkan
+        if (!file.type?.startsWith("image/")) {
+          set.status = 400;
+          return errorResponse("VALIDATION_ERROR", "File harus berupa gambar (JPEG, PNG, WebP)");
+        }
+
+        // Validasi ukuran (max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+          set.status = 400;
+          return errorResponse("VALIDATION_ERROR", "Ukuran file maksimal 2MB");
+        }
+
+        // Generate filename unik
+        const ext = file.name?.split(".").pop() || "jpg";
+        const filename = `profile-${user.userId}.${ext}`;
+        const uploadDir = `${env.modelPath}/profiles`;
+
+        // Buat direktori jika belum ada
+        await fs.mkdir(uploadDir, { recursive: true });
+
+        // Simpan file ke disk
+        const buffer = await file.arrayBuffer();
+        await fs.writeFile(`${uploadDir}/${filename}`, Buffer.from(buffer));
+
+        const photoUrl = `/uploads/profiles/${filename}`;
+        logger.info({ userId: user.userId, photoUrl }, "Upload controller: profile photo uploaded successfully");
+        return success({ photoUrl });
+      } catch (e: any) {
+        logger.error({ err: e, userId: user.userId }, "Upload controller: profile photo upload failed");
+        set.status = e.statusCode || 500;
+        return errorResponse(e.code || "UPLOAD_ERROR", e.message);
+      }
+    },
+    {
+      body: t.Object({ file: t.File() }),
+    }
+  )
 
   // ── Student Photo ────────────────────────────────────────────────
   /**

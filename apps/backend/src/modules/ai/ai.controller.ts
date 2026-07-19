@@ -24,6 +24,7 @@ import * as aiService from "./ai.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { requireHomeroomAccess } from "../../middleware/homeroom";
+import { rateLimitAi } from "../../middleware/rate-limit";
 import logger from "../../lib/logger";
 
 export const aiController = new Elysia({ prefix: "/ai" })
@@ -35,6 +36,7 @@ export const aiController = new Elysia({ prefix: "/ai" })
     app
       .use(requireAuth)
       .use(requireHomeroomAccess)
+      .use(rateLimitAi())
       /**
        * POST /students/:id/summary
        * Generate ringkasan perkembangan siswa via AI.
@@ -42,7 +44,8 @@ export const aiController = new Elysia({ prefix: "/ai" })
        */
       .post(
         "/students/:id/summary",
-        async ({ params }) => {
+        async ({ params, rateLimitAi }) => {
+          rateLimitAi("summary");
           logger.info({ studentId: params.id }, "POST /ai/students/:id/summary — handler invoked");
           const data = await aiService.generateStudentSummary(params.id);
           logger.info({ studentId: params.id }, "Student summary generated successfully");
@@ -59,7 +62,8 @@ export const aiController = new Elysia({ prefix: "/ai" })
        */
       .post(
         "/students/:id/draft-description",
-        async ({ params }) => {
+        async ({ params, rateLimitAi }) => {
+          rateLimitAi("draft");
           logger.info({ studentId: params.id }, "POST /ai/students/:id/draft-description — handler invoked");
           const data = await aiService.generateDraftDescription(params.id);
           logger.info({ studentId: params.id }, "Draft description generated successfully");
@@ -77,6 +81,7 @@ export const aiController = new Elysia({ prefix: "/ai" })
   .guard({}, (app) =>
     app
       .use(requireAuth)
+      .use(rateLimitAi())
       /**
        * POST /classes/:id/transition-summary
        * Generate ringkasan transisi untuk semua siswa dalam satu kelas.
@@ -84,7 +89,8 @@ export const aiController = new Elysia({ prefix: "/ai" })
        */
       .post(
         "/classes/:id/transition-summary",
-        async ({ params }) => {
+        async ({ params, rateLimitAi }) => {
+          rateLimitAi("transition");
           logger.info({ classId: params.id }, "POST /ai/classes/:id/transition-summary — handler invoked");
           const data = await aiService.generateTransitionSummary(params.id);
           logger.info({ classId: params.id, count: data.length }, "Transition summary generated for class");

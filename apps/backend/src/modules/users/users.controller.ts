@@ -90,6 +90,7 @@ export const usersController = new Elysia({ prefix: "/users" })
           ])
         ),
         isActive: t.Optional(t.Boolean()),
+        password: t.Optional(t.String({ minLength: 6 })),
       }),
     }
   )

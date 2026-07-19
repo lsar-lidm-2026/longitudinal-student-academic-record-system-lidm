@@ -698,8 +698,14 @@ export default function StudentsPage() {
             {/* Empty state: tampilkan pesan jika tidak ada data */}
             {!loading && students.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
-                  {search || classId ? "Tidak ada siswa yang sesuai filter" : "Tidak ada data siswa"}
+                <td colSpan={7} className="py-12 text-center">
+                  <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">
+                    {search || classId ? "Tidak ada siswa yang sesuai filter" : "Tidak ada data siswa"}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {search || classId ? "Coba ubah filter pencarian atau kelas." : "Tambahkan siswa baru menggunakan tombol di atas."}
+                  </p>
                 </td>
               </tr>
             )}

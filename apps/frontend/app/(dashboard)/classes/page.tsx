@@ -379,8 +379,10 @@ export default function ClassesPage() {
               {/* Empty state */}
               {classes.length === 0 && (
                 <tr>
-                  <td colSpan={canTransition ? 5 : 4} className="py-12 text-center text-sm text-gray-400">
-                    Belum ada kelas terdaftar.
+                  <td colSpan={canTransition ? 5 : 4} className="py-12 text-center">
+                    <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500">Belum ada kelas terdaftar.</p>
+                    <p className="text-xs text-gray-400 mt-1">Belum ada kelas yang dibuat untuk tahun ajaran ini.</p>
                   </td>
                 </tr>
               )}
