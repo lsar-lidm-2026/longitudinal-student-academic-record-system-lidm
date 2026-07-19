@@ -50,7 +50,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { api } from "@/lib/api";
+import { api, API_BASE_URL } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { SUBJECTS } from "@/lib/constants";
 import type { AcademicYear, SemesterRecord, Achievement, HealthRecord, StudentNote } from "@/types";
@@ -109,8 +109,8 @@ function getCurrentUserId(): string | null {
   try {
     // Decode payload JWT (bagian kedua setelah titik pertama)
     const payload = JSON.parse(atob(token.split(".")[1]));
-    // Coba baca dari field 'sub' atau 'id' — tergantung format token backend
-    return payload.sub || payload.id || null;
+    // JWT payload selalu berisi `userId` (lihat JwtPayload interface di common/types.ts)
+    return payload.userId || null;
   } catch {
     logger.warn("getCurrentUserId", "Gagal mendecode JWT token");
     return null;
@@ -562,7 +562,7 @@ export default function SemesterRecordsPage() {
 
       // Ambil token JWT dari ApiClient untuk Authorization header
       const token = api.getToken();
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+      const baseUrl = API_BASE_URL;
 
       // Gunakan XMLHttpRequest agar bisa tracking progress upload
       const xhr = new XMLHttpRequest();

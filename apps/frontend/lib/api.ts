@@ -32,7 +32,8 @@ import type { ApiResponse } from "../types";
 import { logger } from "@/lib/logger";
 
 /** Base URL API — dari environment variable, fallback ke localhost development */
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+const API_URL = API_BASE_URL;
 
 /**
  * ApiClient — Singleton HTTP client wrapper untuk backend Elysia.
@@ -311,8 +312,17 @@ class ApiClient {
         };
       }
 
-      // Parse response JSON dan return sebagai ApiResponse<T>
-      return await res.json();
+      // Parse response body sebagai JSON
+      // Jika server mengembalikan non-JSON (502, 503 dari reverse proxy), bedakan dari network error
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return {
+          success: false,
+          error: { code: "SERVER_ERROR", message: `Server mengembalikan respons tidak valid (status ${res.status})` },
+        };
+      }
     } catch (err) {
       // Network error — fetch tidak sampai ke server
       logger.error("ApiClient", `request — network error on ${method} ${path}`, { err });

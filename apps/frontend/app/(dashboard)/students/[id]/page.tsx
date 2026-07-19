@@ -57,7 +57,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StudentTimeline } from "@/components/students/StudentTimeline";
 import { RiskBadge } from "@/components/ml/RiskBadge";
 import { TrendChart } from "@/components/ml/TrendChart";
-import { api } from "@/lib/api";
+import { api, API_BASE_URL } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { formatRelativeTime } from "@/lib/utils";
 import type { StudentProfile, StudentNote, StudentRiskResponse, StudentTrendResponse } from "@/types";
@@ -280,7 +280,7 @@ export default function StudentDetailPage() {
 
       // Baca token dari localStorage untuk Authorization header
       const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+      const API_URL = API_BASE_URL;
 
       const res = await fetch(`${API_URL}/upload/students/${params.id}/photo`, {
         method: "POST",
@@ -498,10 +498,11 @@ export default function StudentDetailPage() {
    * Fetch daftar kelas untuk dropdown edit biodata.
    * Dipanggil sekali saat mount agar tidak re-fetch tiap kali modal dibuka.
    */
+  // Fetch kelas untuk dropdown edit biodata (silent failure OK — dropdown tetap muncul)
   useEffect(() => {
-    api.get("/classes").then(res => {
-      if ((res as any).data) setEditClasses((res as any).data);
-    }).catch(() => {});
+    api.handleResponse(api.get<Array<{ id: string; name: string }>>("/classes"))
+      .then((d) => setEditClasses(d))
+      .catch((err) => logger.warn("StudentsDetailPage", "Failed to load classes for edit modal", { err }));
   }, []);
 
   // ── Loading State: Skeleton ──────────────────────────────────────────

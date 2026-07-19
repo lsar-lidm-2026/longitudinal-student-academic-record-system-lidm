@@ -23,7 +23,7 @@
 
 import { useState } from "react";
 import { FileUpload } from "@/components/ui/FileUpload";
-import { api } from "@/lib/api";
+import { api, API_BASE_URL } from "@/lib/api";
 import { Camera, Loader2 } from "lucide-react";
 import { logger } from "@/lib/logger";
 
@@ -85,7 +85,7 @@ export function BiodataCard({ biodata, studentId, onPhotoUpdate }: BiodataCardPr
       formData.append("file", file);
 
       // Ambil base URL API dari env, fallback ke localhost
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+      const API_URL = API_BASE_URL;
       // Ambil token JWT dari localStorage untuk authorization
       const token = localStorage.getItem("accessToken");
 

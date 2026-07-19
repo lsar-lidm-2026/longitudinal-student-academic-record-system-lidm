@@ -43,7 +43,7 @@ import {
   Loader2,
   Copy,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, API_BASE_URL } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import type { SubjectScore, Achievement, Attendance, StudentDocument } from "@/types";
 
@@ -181,7 +181,7 @@ export default function BukuIndukPage() {
       formData.append("file", selectedDocFile);
 
       const token = api.getToken();
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+      const baseUrl = API_BASE_URL;
 
       // Gunakan XMLHttpRequest untuk tracking progress upload
       const xhr = new XMLHttpRequest();

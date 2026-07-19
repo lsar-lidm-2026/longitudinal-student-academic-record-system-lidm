@@ -43,7 +43,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, API_BASE_URL } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -411,7 +411,7 @@ export default function SettingsPage() {
                           const formData = new FormData();
                           formData.append("photo", file);
                           const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-                          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+                           const API_URL = API_BASE_URL;
                           const res = await fetch(`${API_URL}/upload/profile/photo`, {
                             method: "POST",
                             headers: token ? { Authorization: `Bearer ${token}` } : {},
