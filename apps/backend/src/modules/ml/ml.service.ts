@@ -732,14 +732,81 @@ export async function retrainModels() {
 export async function evaluateAllModels(): Promise<EvaluationReport> {
   logger.info({}, "evaluateAllModels called");
 
-  // Kumpulkan fitur semua siswa
+  // Kumpulkan fitur semua siswa — BATCH query
   const students = await prisma.student.findMany({ select: { id: true } });
   const allFeatures: StudentFeatures[] = [];
 
+  // Batch: ambil semua semester records sekaligus untuk semua siswa
+  const allRecords = await prisma.semesterRecord.findMany({
+    where: { studentId: { in: students.map(s => s.id) } },
+    include: {
+      subjectScores: true,
+      attendance: true,
+      achievements: { select: { id: true } },
+    },
+    orderBy: [{ studentId: "asc" }, { academicYear: { year: "asc" } }, { semester: "asc" }],
+  });
+
+  // Kelompokkan per studentId
+  const recordsByStudent = new Map<string, typeof allRecords>();
+  for (const r of allRecords) {
+    if (!recordsByStudent.has(r.studentId)) recordsByStudent.set(r.studentId, []);
+    recordsByStudent.get(r.studentId)!.push(r);
+  }
+
   for (const student of students) {
     try {
-      const features = await computeFeatures(student.id);
-      allFeatures.push(features);
+      const records = recordsByStudent.get(student.id) || [];
+      // Hitung features dari records — tanpa DB query per siswa
+      const avgKnowledgeList: number[] = [];
+      const avgSkillsList: number[] = [];
+      let totalAbsence = 0;
+      let achievementCount = 0;
+      const attendancesWithData: typeof records = [];
+      
+      for (const rec of records) {
+        const scores = rec.subjectScores;
+        if (scores.length > 0) {
+          avgKnowledgeList.push(scores.reduce((s, sc) => s + sc.knowledgeScore, 0) / scores.length);
+          avgSkillsList.push(scores.reduce((s, sc) => s + sc.skillsScore, 0) / scores.length);
+        }
+        if (rec.attendance) {
+          totalAbsence += rec.attendance.sick + rec.attendance.permission + rec.attendance.absent;
+          attendancesWithData.push(rec);
+        }
+        achievementCount += rec.achievements.length;
+      }
+      
+      const avgKnowledge = avgKnowledgeList.length > 0
+        ? avgKnowledgeList.reduce((a, b) => a + b, 0) / avgKnowledgeList.length
+        : 0;
+      const avgSkills = avgSkillsList.length > 0
+        ? avgSkillsList.reduce((a, b) => a + b, 0) / avgSkillsList.length
+        : 0;
+      const scoreDelta = avgKnowledgeList.length >= 2
+        ? avgKnowledgeList[avgKnowledgeList.length - 1] - avgKnowledgeList[0]
+        : 0;
+      const scoreVolatility = avgKnowledgeList.length >= 2
+        ? Math.sqrt(avgKnowledgeList.reduce((sum, v) => sum + (v - avgKnowledge) ** 2, 0) / avgKnowledgeList.length)
+        : 0;
+      const absenceTrend = attendancesWithData.length >= 2
+        ? (attendancesWithData[attendancesWithData.length - 1]!.attendance!.absent) -
+          (attendancesWithData[attendancesWithData.length - 2]!.attendance!.absent)
+        : 0;
+      const academicYearId = records.length > 0 ? records[records.length - 1]?.academicYearId : undefined;
+      
+      allFeatures.push({
+        studentId: student.id,
+        avgKnowledge: Math.round(avgKnowledge * 100) / 100,
+        avgSkills: Math.round(avgSkills * 100) / 100,
+        scoreDelta: Math.round(scoreDelta * 100) / 100,
+        scoreVolatility: Math.round(scoreVolatility * 100) / 100,
+        totalAbsence,
+        absenceTrend,
+        achievementCount,
+        semesterCount: records.length,
+        academicYearId,
+      });
     } catch {
       // Skip siswa tanpa data — tidak mempengaruhi evaluasi
     }
@@ -747,38 +814,33 @@ export async function evaluateAllModels(): Promise<EvaluationReport> {
 
   logger.debug({ totalStudents: students.length, validFeatures: allFeatures.length }, "Features collected for evaluation");
 
-  const models = await getTrainedModels();
-
   // Analisis distribusi fitur
   const featureAnalysis = analyzeFeatures(allFeatures);
 
   // Analisis distribusi risiko
   const riskDistribution = analyzeRiskDistribution(allFeatures);
 
-  // Evaluasi cluster — jika model cluster tersedia
-  let clusterEvaluation = null;
-  if (models.clusterModel && allFeatures.length > 0) {
-    const maxes = [
-      Math.max(...allFeatures.map((f) => f.avgKnowledge), 100),
-      Math.max(...allFeatures.map((f) => f.avgSkills), 100),
-      Math.max(...allFeatures.map((f) => f.totalAbsence), 10),
-      Math.max(...allFeatures.map((f) => f.achievementCount), 5),
-    ];
-    const clusterVectors = allFeatures.map((f) => [
-      f.avgKnowledge / Math.max(maxes[0], 100),
-      f.avgSkills / Math.max(maxes[1], 100),
-      Math.min(f.avgSkills / Math.max(maxes[2], 10), 1),
-      Math.min(f.achievementCount / Math.max(maxes[3], 5), 1),
-    ]);
-    clusterEvaluation = evaluateCluster(clusterVectors, models.clusterModel);
-    logger.debug({ clusterEvaluation }, "Cluster evaluation computed");
-  }
+  // Evaluasi cluster — dilewati untuk /ml/eval (mencegah trigger training 200 siswa)
+  // K-Means clustering adalah post-MVP (FR-17/P5). Silhouette & inertia tersedia
+  // di halaman ML Dashboard per kelas melalui endpoint /ml/cluster/class/:id
+  const clusterEvaluation = null;
 
   // Evaluasi tren — untuk setiap siswa dengan minimal 2 semester data
   const trendResults: Array<{ slope: number; rSquared: number; nPoints: number }> = [];
   for (const f of allFeatures) {
     try {
-      const { x, y, nPoints } = await getSemesterAverages(f.studentId);
+      // Gunakan data batch yang sudah dimuat — tanpa DB query tambahan
+      const stuRecords = recordsByStudent.get(f.studentId) || [];
+      const semesterData: number[] = [];
+      for (const rec of stuRecords) {
+        const scores = rec.subjectScores;
+        if (scores.length > 0) {
+          semesterData.push(scores.reduce((s, sc) => s + sc.knowledgeScore, 0) / scores.length);
+        }
+      }
+      const nPoints = semesterData.length;
+      const x = Array.from({ length: nPoints }, (_, i) => i);
+      const y = semesterData;
       if (nPoints >= 2) {
         const reg = trainLinearRegression(x, y);
         trendResults.push({ slope: reg.slope, rSquared: reg.rSquared, nPoints });

@@ -7,3 +7,4 @@ apps/frontend/test-results
 e2e/
 apps/frontend/e2e-screenshots
 apps/backend/models
+.playwright-mcp/

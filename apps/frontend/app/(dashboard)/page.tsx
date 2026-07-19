@@ -276,12 +276,6 @@ export default function DashboardPage() {
             description="Review perkembangan siswa."
           />
           <QuickAccessCard
-            href="/students"
-            icon={Users}
-            title="Data Master Siswa"
-            description="Kelola biodata siswa."
-          />
-          <QuickAccessCard
             href="/classes"
             icon={Printer}
             title="Manajemen Kelas"
@@ -360,7 +354,10 @@ export default function DashboardPage() {
               </div>
             ) : activities.length === 0 ? (
               /* Empty state: tidak ada aktivitas */
-              <p className="text-xs text-gray-400 text-center py-6">Belum ada aktivitas</p>
+              <div className="text-center py-6">
+                <p className="text-xs text-gray-400">Belum ada aktivitas</p>
+                <p className="text-[11px] text-gray-300 mt-1">Mulai dengan menginput data siswa atau nilai semester.</p>
+              </div>
             ) : (
               /* Daftar aktivitas dari API */
               <div className="space-y-3">

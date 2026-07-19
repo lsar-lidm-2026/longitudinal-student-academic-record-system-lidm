@@ -80,10 +80,10 @@ const menuItems = [
     roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH"] as Role[],
   },
   {
-    label: "Buku Induk",
+    label: "Manajemen Kelas",
     href: "/classes",
     icon: BookOpen,
-    roles: ["ADMINISTRATOR", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
+    roles: ["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH", "OPERATOR_SEKOLAH"] as Role[],
   },
   {
     label: "Tahun Ajaran",

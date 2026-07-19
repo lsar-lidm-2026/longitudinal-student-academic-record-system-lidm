@@ -36,6 +36,10 @@ import {
   Trash2,
   ChevronRight,
   Save,
+  Sun,
+  Moon,
+  Check,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -76,6 +80,8 @@ export default function SettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   /** ID user yang sedang login (dari /auth/me) */
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  /** Role user yang sedang login (dari /auth/me) */
+  const [currentUserRole, setCurrentUserRole] = useState<string>("");
 
   // ── Password form state ────────────────────────────────────────────
   /** Password saat ini — input user */
@@ -88,6 +94,43 @@ export default function SettingsPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   /** Pesan error validasi form (inline) */
   const [passwordError, setPasswordError] = useState("");
+
+  // ── Notification toggle state ──────────────────────────────────────
+  const [notifEmail, setNotifEmail] = useState(true);
+  const [notifApp, setNotifApp] = useState(true);
+  const [notifAiSummary, setNotifAiSummary] = useState(true);
+  const [notifInputReminder, setNotifInputReminder] = useState(true);
+
+  /** Toggle theme (Terang/Gelap) — default Terang */
+  const [darkMode, setDarkMode] = useState(false);
+
+  /** Load notifikasi & preferensi dari localStorage saat mount */
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setNotifEmail(localStorage.getItem("notif_email") !== "false");
+      setNotifApp(localStorage.getItem("notif_app") !== "false");
+      setNotifAiSummary(localStorage.getItem("notif_ai_summary") !== "false");
+      setNotifInputReminder(localStorage.getItem("notif_input_reminder") !== "false");
+      setDarkMode(localStorage.getItem("dark_mode") === "true");
+    }
+  }, []);
+
+  /** Persist toggle notifikasi ke localStorage */
+  function toggleNotif(key: string, value: boolean, setter: (v: boolean) => void) {
+    setter(value);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(key, String(value));
+    }
+  }
+
+  /** Toggle tema gelap/terang */
+  function toggleDarkMode() {
+    const next = !darkMode;
+    setDarkMode(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("dark_mode", String(next));
+    }
+  }
 
   /** Inisialisasi: cek kesehatan sistem + muat data profil */
   useEffect(() => {
@@ -106,7 +149,8 @@ export default function SettingsPage() {
       if (res.success && res.data) {
         setProfileName(res.data.name || "");
         setCurrentUserId(res.data.id);
-        logger.info("SettingsPage", "Profil user berhasil dimuat", { userId: res.data.id, name: res.data.name });
+        setCurrentUserRole(res.data.role);
+        logger.info("SettingsPage", "Profil user berhasil dimuat", { userId: res.data.id, name: res.data.name, role: res.data.role });
       }
     } catch (err) {
       logger.error("SettingsPage", "Gagal memuat profil user", { err });
@@ -534,18 +578,113 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ── Placeholder untuk tab lain (notifikasi, preferensi, akses) ── */}
-          {activeTab !== "profil" && activeTab !== "keamanan" && (
-            <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-              <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                {activeTab === "notifikasi" && <Bell className="w-5 h-5 text-gray-400" />}
-                {activeTab === "preferensi" && <Monitor className="w-5 h-5 text-gray-400" />}
-                {activeTab === "akses" && <Shield className="w-5 h-5 text-gray-400" />}
+          {/* ── Tab: Notifikasi ──────────────────────────────────────────── */}
+          {activeTab === "notifikasi" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h2 className="text-base font-semibold text-gray-900">Notifikasi</h2>
+                <p className="text-sm text-gray-400 mt-0.5">Atur pemberitahuan yang ingin Anda terima.</p>
+                <div className="mt-5 space-y-1">
+                  <ToggleRow
+                    label="Pemberitahuan Email"
+                    description="Terima notifikasi melalui email institusi"
+                    enabled={notifEmail}
+                    onChange={(v) => toggleNotif("notif_email", v, setNotifEmail)}
+                  />
+                  <ToggleRow
+                    label="Pemberitahuan Aplikasi"
+                    description="Terima notifikasi di dalam aplikasi"
+                    enabled={notifApp}
+                    onChange={(v) => toggleNotif("notif_app", v, setNotifApp)}
+                  />
+                  <ToggleRow
+                    label="Ringkasan AI Baru"
+                    description="Dapatkan pemberitahuan saat ringkasan AI selesai dibuat"
+                    enabled={notifAiSummary}
+                    onChange={(v) => toggleNotif("notif_ai_summary", v, setNotifAiSummary)}
+                  />
+                  <ToggleRow
+                    label="Pengingat Input Nilai"
+                    description="Ingatan untuk mengisi atau melengkapi nilai semester"
+                    enabled={notifInputReminder}
+                    onChange={(v) => toggleNotif("notif_input_reminder", v, setNotifInputReminder)}
+                  />
+                </div>
               </div>
-              <h3 className="text-sm font-semibold text-gray-700">
-                {settingsMenu.find(m => m.id === activeTab)?.label}
-              </h3>
-              <p className="text-xs text-gray-400 mt-1">Fitur ini akan segera tersedia.</p>
+            </div>
+          )}
+
+          {/* ── Tab: Preferensi Sistem ────────────────────────────────────── */}
+          {activeTab === "preferensi" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h2 className="text-base font-semibold text-gray-900">Preferensi Sistem</h2>
+                <p className="text-sm text-gray-400 mt-0.5">Sesuaikan tampilan dan bahasa aplikasi.</p>
+                <div className="mt-5 space-y-4">
+                  <PreferenceRow label="Bahasa" value="Bahasa Indonesia" />
+                  <PreferenceRow label="Format Tanggal" value="DD/MM/YYYY" />
+                  <PreferenceRow label="Zona Waktu" value="Asia/Jakarta (WIB)" />
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Tampilan</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Beralih antara tema terang dan gelap</p>
+                    </div>
+                    <button
+                      onClick={toggleDarkMode}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        darkMode ? "bg-blue-600" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full bg-white transition-transform ${
+                          darkMode ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      >
+                        {darkMode ? (
+                          <Moon className="w-2.5 h-2.5 text-blue-600" />
+                        ) : (
+                          <Sun className="w-2.5 h-2.5 text-amber-500" />
+                        )}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Tab: Hak Akses Peran ─────────────────────────────────────── */}
+          {activeTab === "akses" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h2 className="text-base font-semibold text-gray-900">Hak Akses Peran</h2>
+                <p className="text-sm text-gray-400 mt-0.5">
+                  Matriks izin akses setiap peran pengguna. Peran Anda saat ini: <span className="font-semibold text-gray-700">{currentUserRole || "—"}</span>
+                </p>
+                <div className="mt-5 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Modul</th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin</th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Operator</th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Guru</th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kepsek</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      <PermissionRow module="Manajemen Pengguna" admin operator={false} guru={false} kepsek={false} />
+                      <PermissionRow module="Tahun Ajaran" admin operator={false} guru={false} kepsek={false} />
+                      <PermissionRow module="Kelas & Assignment" admin operator guru kepsek />
+                      <PermissionRow module="Data Siswa" admin={false} operator guru kepsek />
+                      <PermissionRow module="Nilai & Semester" admin={false} operator={false} guru kepsek />
+                      <PermissionRow module="Profil Longitudinal" admin={false} operator={false} guru kepsek />
+                      <PermissionRow module="Buku Induk" admin={false} operator={false} guru kepsek />
+                      <PermissionRow module="Fitur AI" admin={false} operator={false} guru kepsek />
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -574,5 +713,100 @@ function StatusRow({ label, value, status }: { label: string; value: string; sta
         {value}
       </span>
     </div>
+  );
+}
+
+/**
+ * ToggleRow — Baris toggle switch dengan label dan deskripsi.
+ */
+function ToggleRow({
+  label,
+  description,
+  enabled,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  enabled: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+      <div>
+        <p className="text-sm font-medium text-gray-700">{label}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+      </div>
+      <button
+        onClick={() => onChange(!enabled)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          enabled ? "bg-blue-600" : "bg-gray-300"
+        }`}
+      >
+        <span
+          className={`inline-flex h-4 w-4 items-center justify-center rounded-full bg-white transition-transform ${
+            enabled ? "translate-x-6" : "translate-x-1"
+          }`}
+        >
+          {enabled ? (
+            <Check className="w-2.5 h-2.5 text-blue-600" />
+          ) : (
+            <X className="w-2.5 h-2.5 text-gray-400" />
+          )}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * PreferenceRow — Baris informasi preferensi readonly.
+ */
+function PreferenceRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="text-sm text-gray-500">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * PermissionRow — Baris matriks hak akses per modul.
+ */
+function PermissionRow({
+  module,
+  admin,
+  operator,
+  guru,
+  kepsek,
+}: {
+  module: string;
+  admin?: boolean;
+  operator?: boolean;
+  guru?: boolean;
+  kepsek?: boolean;
+}) {
+  const Cell = ({ hasAccess }: { hasAccess?: boolean }) => (
+    <td className="text-center py-3 px-3">
+      {hasAccess ? (
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100">
+          <Check className="w-3.5 h-3.5 text-green-600" />
+        </span>
+      ) : (
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100">
+          <X className="w-3 h-3 text-gray-300" />
+        </span>
+      )}
+    </td>
+  );
+
+  return (
+    <tr>
+      <td className="py-3 pr-4 text-sm font-medium text-gray-700">{module}</td>
+      <Cell hasAccess={admin} />
+      <Cell hasAccess={operator} />
+      <Cell hasAccess={guru} />
+      <Cell hasAccess={kepsek} />
+    </tr>
   );
 }
