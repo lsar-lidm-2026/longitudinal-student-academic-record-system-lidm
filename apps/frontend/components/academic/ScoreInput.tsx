@@ -1,7 +1,5 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
-
 export interface ScoreInputData {
   subjectName: string;
   knowledgeScore: number;
@@ -48,27 +46,29 @@ export function ScoreInput({ scores, onChange }: ScoreInputProps) {
               {subject}
             </span>
             <div className="flex gap-3">
-              <Input
+              <input
                 type="number"
                 min="0"
                 max="100"
-                value={score.knowledgeScore}
+                value={score.knowledgeScore || ""}
                 onChange={(e) =>
                   updateScore(scoreIdx >= 0 ? scoreIdx : idx, "knowledgeScore", toNumber(e.target.value))
                 }
-                placeholder="Pengetahuan"
-                className="w-24"
+                placeholder="P"
+                title="Nilai Pengetahuan"
+                className="w-16 h-8 px-2 border border-gray-200 rounded-md text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-center"
               />
-              <Input
+              <input
                 type="number"
                 min="0"
                 max="100"
-                value={score.skillsScore}
+                value={score.skillsScore || ""}
                 onChange={(e) =>
                   updateScore(scoreIdx >= 0 ? scoreIdx : idx, "skillsScore", toNumber(e.target.value))
                 }
-                placeholder="Keterampilan"
-                className="w-24"
+                placeholder="K"
+                title="Nilai Keterampilan"
+                className="w-16 h-8 px-2 border border-gray-200 rounded-md text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-center"
               />
             </div>
           </div>

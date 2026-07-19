@@ -15,7 +15,6 @@ import {
   Heart,
   Trophy,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import type { SubjectScore, Achievement, Attendance } from "@/types";
 
@@ -151,7 +150,7 @@ export default function BukuIndukPage() {
         {/* Left: Student Card + Doc Info */}
         <div className="space-y-4">
           {/* Student Identity Card */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="h-20 bg-gradient-to-r from-blue-500 to-blue-400 relative">
               <div className="absolute -bottom-8 left-1/2 -translate-x-1/2">
                 <div className="w-16 h-16 rounded-full bg-white border-4 border-white shadow flex items-center justify-center">
@@ -169,14 +168,14 @@ export default function BukuIndukPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-400 uppercase">Status</p>
-                  <p className="font-semibold text-green-600">Aktif</p>
+                  <p className="font-semibold text-emerald-600">Aktif</p>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Informasi Dokumen */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2 mb-3">
               <FileText className="w-4 h-4 text-blue-500" />
               Informasi Dokumen
@@ -198,7 +197,7 @@ export default function BukuIndukPage() {
           </div>
 
           {/* Riwayat Log */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2 mb-3">
               <Clock className="w-4 h-4 text-blue-500" />
               Riwayat Log
@@ -213,10 +212,10 @@ export default function BukuIndukPage() {
         {/* Right: Document Content */}
         <div className="lg:col-span-2 space-y-4">
           {/* I. Keterangan Tentang Siswa */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
+          <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-gray-900">I. Keterangan Tentang Siswa</h2>
-              <span className="px-2 py-0.5 text-[10px] font-semibold rounded bg-red-50 text-red-500 border border-red-100">
+              <span className="px-2 py-0.5 text-[10px] font-bold tracking-wider rounded bg-red-50 text-red-500 border border-red-100">
                 RAHASIA
               </span>
             </div>
@@ -231,7 +230,7 @@ export default function BukuIndukPage() {
 
           {/* II. Data Akademik per Semester */}
           {preview.semesterRecords.map((record) => (
-            <div key={record.id} className="bg-white rounded-xl border border-gray-100 p-6">
+            <div key={record.id} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
               <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <GraduationCap className="w-4 h-4 text-blue-500" />
                 {record.year} — Semester {record.semester === 1 ? "Ganjil" : "Genap"}
@@ -291,9 +290,9 @@ export default function BukuIndukPage() {
                       <div key={ach.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
                         <Trophy className="w-3.5 h-3.5 text-amber-500" />
                         <span className="text-sm text-gray-700">{ach.title}</span>
-                        <Badge variant={ach.type === "Akademik" ? "info" : "warning"} className="ml-auto">
+                        <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-600 border border-blue-100">
                           {ach.type}
-                        </Badge>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -303,14 +302,14 @@ export default function BukuIndukPage() {
           ))}
 
           {preview.semesterRecords.length === 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
+            <div className="bg-white rounded-xl border border-gray-100 p-12 text-center shadow-sm">
               <GraduationCap className="w-8 h-8 text-gray-300 mx-auto mb-2" />
               <p className="text-sm text-gray-400">Belum ada data semester untuk ditampilkan.</p>
             </div>
           )}
 
           {/* Signature Area */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
+          <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
             <div className="flex justify-between">
               <div className="text-center">
                 <p className="text-xs text-gray-500 mb-12">Mengetahui,</p>

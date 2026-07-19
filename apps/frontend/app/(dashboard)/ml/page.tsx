@@ -2,12 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { AuthGuard } from "@/components/layout/AuthGuard";
-import { MagicCard } from "@/components/ui/magic-card";
-import { BorderBeam } from "@/components/ui/border-beam";
-import { NumberTicker } from "@/components/ui/number-ticker";
-import { CardContainer, CardBody, CardItem } from "@/components/ui/3d-card";
 import { RiskHeatmap } from "@/components/ml/RiskHeatmap";
 import { api } from "@/lib/api";
+import { BarChart3, TrendingDown, TrendingUp, AlertTriangle, Users, Target } from "lucide-react";
 import type { ClassItem, RiskData } from "@/types";
 
 export default function MLDashboardPage() {
@@ -63,95 +60,126 @@ export default function MLDashboardPage() {
 
   return (
     <AuthGuard roles={["ADMINISTRATOR", "GURU", "KEPALA_SEKOLAH"]}>
-    <div className="space-y-6">
-      <div className="relative">
-        <BorderBeam className="absolute inset-0 rounded-2xl" duration={8} />
-        <div className="relative p-6 bg-gradient-to-br from-white via-fuchsia-50/30 to-purple-50/30 rounded-2xl border border-fuchsia-100/50">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">ML Dashboard</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                Analisis risiko dan prediksi akademik
-              </p>
+      <div className="space-y-6 max-w-6xl mx-auto">
+        
+        {/* Header */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-blue-500" />
+              Machine Learning Dashboard
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Analisis prediksi akademik dan heatmap risiko siswa berdasarkan histori nilai.
+            </p>
+          </div>
+          <div className="w-full sm:w-64">
+            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+              Pilih Kelas
+            </label>
+            <div className="relative">
+              <select
+                className="w-full h-10 px-3 pr-8 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-gray-900 appearance-none"
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+              >
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} {c.academicYear?.year ? `- ${c.academicYear.year}` : ""}</option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
             </div>
-            <select
-              className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white hover:border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
+          </div>
+        </div>
+
+        {loading && (
+          <div className="flex flex-col items-center justify-center h-64 bg-white rounded-xl border border-gray-100">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3" />
+            <p className="text-sm text-gray-500">Menganalisis data kelas...</p>
+          </div>
+        )}
+
+        {riskData && !loading && (
+          <>
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex flex-col justify-center">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <Users className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Siswa</p>
+                </div>
+                <p className="text-3xl font-bold text-gray-900">{riskData.summary.total}</p>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex flex-col justify-center border-b-4 border-b-red-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+                    <TrendingDown className="w-4 h-4 text-red-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Kritis</p>
+                </div>
+                <p className="text-3xl font-bold text-red-600">{riskData.summary.kritis}</p>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex flex-col justify-center border-b-4 border-b-amber-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Waspada</p>
+                </div>
+                <p className="text-3xl font-bold text-amber-600">{riskData.summary.waspada}</p>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex flex-col justify-center border-b-4 border-b-emerald-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <Target className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Aman</p>
+                </div>
+                <p className="text-3xl font-bold text-emerald-600">{riskData.summary.aman}</p>
+              </div>
+
+            </div>
+
+            {/* Risk Heatmap */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+                <h3 className="text-sm font-semibold text-gray-900">Distribusi Risiko Siswa (Heatmap)</h3>
+              </div>
+              <div className="p-5">
+                <RiskHeatmap results={riskData.results} summary={riskData.summary} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {!loading && error && (
+          <div className="text-center py-12 bg-white rounded-xl border border-red-100 text-red-500">
+            <p>{error}</p>
+            <button
+              onClick={refresh}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
             >
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>{c.name} - {c.academicYear?.year}</option>
-              ))}
-            </select>
+              Coba Lagi
+            </button>
           </div>
-        </div>
+        )}
+
+        {!loading && !error && !riskData && (
+          <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-200">
+            <BarChart3 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-600">Pilih kelas di atas</p>
+            <p className="text-xs text-gray-400 mt-1">Data prediksi akademik akan ditampilkan setelah Anda memilih kelas.</p>
+          </div>
+        )}
       </div>
-
-      {loading && (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-        </div>
-      )}
-
-      {riskData && !loading && (
-        <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <CardContainer className="w-full">
-              <CardBody className="bg-white rounded-xl border border-gray-200 p-4 text-center w-full">
-                <CardItem translateZ="30">
-                  <p className="text-xs text-muted-foreground">Total Siswa</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    <NumberTicker value={riskData.summary.total} />
-                  </p>
-                </CardItem>
-              </CardBody>
-            </CardContainer>
-            <MagicCard className="p-4 text-center" gradientSize={150}>
-              <p className="text-xs text-muted-foreground">Kritis</p>
-              <p className="text-2xl font-bold text-red-600">
-                <NumberTicker value={riskData.summary.kritis} />
-              </p>
-            </MagicCard>
-            <MagicCard className="p-4 text-center" gradientSize={150}>
-              <p className="text-xs text-muted-foreground">Waspada</p>
-              <p className="text-2xl font-bold text-yellow-600">
-                <NumberTicker value={riskData.summary.waspada} />
-              </p>
-            </MagicCard>
-            <MagicCard className="p-4 text-center" gradientSize={150}>
-              <p className="text-xs text-muted-foreground">Aman</p>
-              <p className="text-2xl font-bold text-green-600">
-                <NumberTicker value={riskData.summary.aman} />
-              </p>
-            </MagicCard>
-          </div>
-
-          {/* Risk Heatmap */}
-          <MagicCard className="p-6">
-            <RiskHeatmap results={riskData.results} summary={riskData.summary} />
-          </MagicCard>
-        </>
-      )}
-
-      {!loading && error && (
-        <div className="text-center py-12 text-red-500">
-          <p>{error}</p>
-          <button
-            onClick={refresh}
-            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Coba Lagi
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && !riskData && (
-        <div className="text-center py-12 text-muted-foreground">
-          Pilih kelas untuk melihat analisis risiko
-        </div>
-      )}
-    </div>
     </AuthGuard>
   );
 }

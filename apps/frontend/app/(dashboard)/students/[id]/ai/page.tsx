@@ -7,62 +7,85 @@ import { toast } from "sonner";
 import {
   Sparkles,
   FileText,
-  BarChart3,
-  MessageCircle,
-  AlertTriangle,
   ChevronLeft,
   Copy,
   RotateCcw,
-  CheckCircle,
-  Save,
-  Users,
-  Clock,
+  CheckCircle2,
   AlertCircle,
-  Info,
+  Loader2,
+  Check,
+  Save,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AiSummary, SemesterRecord } from "@/types";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type AiType = "summary" | "draft-description";
 
 export default function AiAssistantPage() {
   const params = useParams();
+
   const [records, setRecords] = useState<SemesterRecord[]>([]);
+  const [loadingRecords, setLoadingRecords] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState("");
-  const [aiType, setAiType] = useState<AiType>("summary");
+
   const [summaries, setSummaries] = useState<AiSummary[]>([]);
+  const [loadingSummaries, setLoadingSummaries] = useState(false);
+
+  // States for generation & saving
   const [generating, setGenerating] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-  const [result, setResult] = useState<AiSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [finalizingId, setFinalizingId] = useState<string | null>(null);
 
-  function refresh() {
-    setError(null);
-    api.handleResponse(api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`))
-      .then(setRecords)
-      .catch((err) => {
-        setError(err.message || "Gagal memuat data semester");
-      });
+  // Store editable content for drafts
+  const [draftContent, setDraftContent] = useState<Record<string, string>>({});
+
+  function fetchRecords() {
+    setLoadingRecords(true);
+    api
+      .handleResponse(api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`))
+      .then((data) => {
+        setRecords(data);
+        if (data.length > 0) setSelectedRecord(data[0].id);
+      })
+      .catch((err) => toast.error(err.message ?? "Gagal memuat data semester"))
+      .finally(() => setLoadingRecords(false));
   }
 
-  useEffect(() => { refresh(); }, [params.id]);
+  useEffect(() => {
+    fetchRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
 
-  async function loadSummaries() {
+  useEffect(() => {
     if (!selectedRecord) return;
-    try {
-      const data = await api.handleResponse(api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`));
-      setSummaries(data);
-    } catch (err: any) {
-      toast.error(err.message || "Gagal memuat riwayat AI");
-    }
-  }
+    setLoadingSummaries(true);
+    api
+      .handleResponse(api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`))
+      .then((data) => {
+        setSummaries(data);
+        // Initialize draft content for any non-final summaries
+        const initialDrafts: Record<string, string> = {};
+        data.forEach((s) => {
+          if (!s.isFinal) initialDrafts[s.id] = s.content;
+        });
+        setDraftContent(initialDrafts);
+      })
+      .catch((err) => toast.error(err.message ?? "Gagal memuat riwayat AI"))
+      .finally(() => setLoadingSummaries(false));
+  }, [selectedRecord]);
 
-  useEffect(() => { loadSummaries(); }, [selectedRecord]);
+  // Helpers to get the latest summary for a specific type
+  const getLatestSummary = (type: "STUDENT_SUMMARY" | "DRAFT_DESCRIPTION") => {
+    const filtered = summaries.filter((s) => s.summaryType === type);
+    if (filtered.length === 0) return null;
+    // Sort by version descending
+    return filtered.sort((a, b) => b.version - a.version)[0];
+  };
 
-  async function generate() {
-    if (!selectedRecord) return;
+  async function handleGenerate(aiType: AiType) {
+    if (!selectedRecord || generating) return;
     setGenerating(true);
-    setResult(null);
 
     const endpointMap: Record<AiType, string> = {
       summary: `/ai/students/${params.id}/summary`,
@@ -70,355 +93,363 @@ export default function AiAssistantPage() {
     };
 
     try {
-      const data = await api.handleResponse(api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord }));
-      setResult(data);
-      toast.success("AI analysis berhasil digenerate");
-      loadSummaries();
+      const data = await api.handleResponse(
+        api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord })
+      );
+      setSummaries((prev) => [data, ...prev]);
+      setDraftContent((prev) => ({ ...prev, [data.id]: data.content }));
+      toast.success("Konten AI berhasil dibuat!");
     } catch (err: any) {
-      toast.error(err.message || "Gagal generate AI analysis");
+      toast.error(err.message ?? "Gagal generate AI");
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   }
 
-  async function finalize(summaryId: string) {
+  async function handleRegenerate(summaryId: string) {
+    if (generating) return;
+    setGenerating(true);
     try {
-      // Fix: gunakan api.handleResponse() konsisten seperti generate() dan regenerate()
-      await api.handleResponse(api.put<AiSummary>(`/ai-summaries/${summaryId}`, { isFinal: true }));
-      // Update result state jika yang di-finalize adalah yang sedang ditampilkan
-      setResult((prev) => (prev?.id === summaryId ? { ...prev, isFinal: true } : prev));
-      loadSummaries();
-      toast.success("AI summary berhasil difinalkan");
+      const data = await api.handleResponse(
+        api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`)
+      );
+      setSummaries((prev) => [data, ...prev]);
+      setDraftContent((prev) => ({ ...prev, [data.id]: data.content }));
+      toast.success("Versi baru berhasil dibuat!");
     } catch (err: any) {
-      toast.error(err.message || "Gagal finalkan AI summary");
+      toast.error(err.message ?? "Gagal regenerate AI");
+    } finally {
+      setGenerating(false);
     }
   }
 
-  async function regenerate(summaryId: string) {
-    setRegenerating(true);
+  async function handleSaveDraft(summary: AiSummary) {
+    setSavingId(summary.id);
     try {
-      const data = await api.handleResponse(api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`));
-      setResult(data);
-      toast.success("AI berhasil di-regenerate");
-      loadSummaries();
+      const updated = await api.handleResponse(
+        api.put<AiSummary>(`/ai-summaries/${summary.id}`, { content: draftContent[summary.id] })
+      );
+      setSummaries((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      toast.success("Draft berhasil disimpan");
     } catch (err: any) {
-      toast.error(err.message || "Gagal regenerate AI");
+      toast.error(err.message ?? "Gagal menyimpan draft");
+    } finally {
+      setSavingId(null);
     }
-    setRegenerating(false);
   }
 
-  const aiTasks = [
-    {
-      id: "summary",
-      title: "Ringkasan Rapor Otomatis",
-      description: "Generasi narasi catatan wali kelas berdasarkan akumulasi nilai dan perilaku",
-      icon: FileText,
-      needsReview: summaries.some(s => !s.isFinal && s.summaryType === "STUDENT_SUMMARY"),
-    },
-    {
-      id: "draft-description",
-      title: "Draft Deskripsi Kompetensi",
-      description: "Saran deskripsi untuk setiap mata pelajaran berdasarkan nilai",
-      icon: BarChart3,
-      needsReview: summaries.some(s => !s.isFinal && s.summaryType === "DRAFT_DESCRIPTION"),
-    },
-  ];
+  async function handleFinalize(summary: AiSummary) {
+    setFinalizingId(summary.id);
+    try {
+      // Ensure the latest edited content is saved during finalization
+      await api.handleResponse(
+        api.put<AiSummary>(`/ai-summaries/${summary.id}`, {
+          content: draftContent[summary.id] || summary.content,
+          isFinal: true,
+        })
+      );
+      // Refresh summaries to reflect final state
+      const data = await api.handleResponse(
+        api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`)
+      );
+      setSummaries(data);
+      toast.success("Konten berhasil difinalisasi!");
+    } catch (err: any) {
+      toast.error(err.message ?? "Gagal memfinalisasi konten");
+    } finally {
+      setFinalizingId(null);
+    }
+  }
 
-  const analyzedCount = summaries.filter(s => s.isFinal).length;
-  const pendingCount = summaries.filter(s => !s.isFinal).length;
+  const latestSummary = getLatestSummary("STUDENT_SUMMARY");
+  const latestDraft = getLatestSummary("DRAFT_DESCRIPTION");
+
+  if (loadingRecords) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <div className="text-sm text-gray-400 flex items-center gap-1.5">
-        <Link href="/" className="hover:text-blue-600 transition-colors">Dashboard</Link>
+    <div className="space-y-6 max-w-5xl">
+      {/* ── Breadcrumb ────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Link href="/students" className="hover:text-blue-600 transition-colors">Data Siswa</Link>
         <span>›</span>
-        <Link href={`/students/${params.id}`} className="hover:text-blue-600 transition-colors">Detail</Link>
+        <Link href={`/students/${params.id}`} className="hover:text-blue-600 transition-colors">Profil Siswa</Link>
         <span>›</span>
-        <span className="text-gray-700 font-medium">AI Assistant</span>
+        <span className="text-gray-900 font-medium">AI Assistant</span>
       </div>
 
-      {/* Hero Banner */}
-      <div className="relative bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-400 rounded-2xl p-6 md:p-8 text-white overflow-hidden">
-        <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -translate-y-1/3 translate-x-1/4" />
-        <div className="absolute bottom-0 right-32 w-32 h-32 bg-white/5 rounded-full translate-y-1/2" />
-        <div className="relative">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/15 rounded-full text-xs font-medium mb-3">
-            <Sparkles className="w-3 h-3" />
-            Didukung oleh Teknologi AI
-          </span>
-          <h1 className="text-2xl font-bold">Ada yang bisa LSAR AI bantu hari ini?</h1>
-          <p className="text-blue-100 mt-2 text-sm max-w-xl leading-relaxed">
-            Gunakan asisten kecerdasan buatan untuk mempercepat administrasi, menganalisis performa siswa, dan memberikan rekomendasi.
+      {/* ── Header & Semester Selector ────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-blue-500" />
+            AI Assistant Rapor
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Bantu susun narasi rapor siswa berdasarkan nilai dan absensi secara otomatis.
           </p>
-          <div className="flex gap-3 mt-5">
-            <button
-              onClick={() => selectedRecord && generate()}
-              disabled={!selectedRecord || generating}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors shadow-sm disabled:opacity-50"
-            >
-              Mulai Analisis Baru
-            </button>
-            <button className="inline-flex items-center gap-2 px-4 py-2 border border-white/30 text-white text-sm font-medium rounded-lg hover:bg-white/10 transition-colors">
-              <Clock className="w-3.5 h-3.5" />
-              Riwayat Sesi
-            </button>
-          </div>
         </div>
+        
+        {records.length > 0 ? (
+          <div className="w-full sm:w-64">
+            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+              Pilih Semester
+            </label>
+            <select
+              value={selectedRecord}
+              onChange={(e) => setSelectedRecord(e.target.value)}
+              className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-gray-900"
+            >
+              {records.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.academicYear?.year ?? "?"} — Semester {r.semester === 1 ? "Ganjil" : "Genap"}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="px-4 py-2 bg-amber-50 text-amber-700 text-sm rounded-lg border border-amber-100">
+            Belum ada record semester.
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="text-center py-8 text-red-500">
-          <p>{error}</p>
-          <button
-            onClick={refresh}
-            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Coba Lagi
-          </button>
-        </div>
+      {records.length > 0 && (
+        <Tabs defaultValue="summary" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="summary" className="gap-2">
+              <FileText className="w-4 h-4" /> Ringkasan Catatan Wali Kelas
+            </TabsTrigger>
+            <TabsTrigger value="draft-description" className="gap-2">
+              <CheckCircle2 className="w-4 h-4" /> Deskripsi Kompetensi
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ── TAB 1: Ringkasan Catatan Wali Kelas ───────────────── */}
+          <TabsContent value="summary">
+            <AiContentPanel
+              title="Catatan Wali Kelas"
+              description="Narasi menyeluruh tentang perkembangan akademik, kehadiran, dan prestasi siswa selama satu semester."
+              aiType="summary"
+              summary={latestSummary}
+              draftContent={draftContent}
+              setDraftContent={setDraftContent}
+              loading={loadingSummaries}
+              generating={generating}
+              savingId={savingId}
+              finalizingId={finalizingId}
+              onGenerate={() => handleGenerate("summary")}
+              onRegenerate={handleRegenerate}
+              onSaveDraft={handleSaveDraft}
+              onFinalize={handleFinalize}
+            />
+          </TabsContent>
+
+          {/* ── TAB 2: Deskripsi Kompetensi ───────────────────────── */}
+          <TabsContent value="draft-description">
+            <AiContentPanel
+              title="Deskripsi Mata Pelajaran"
+              description="Rekomendasi teks deskripsi untuk setiap mata pelajaran berdasarkan nilai yang telah diinput."
+              aiType="draft-description"
+              summary={latestDraft}
+              draftContent={draftContent}
+              setDraftContent={setDraftContent}
+              loading={loadingSummaries}
+              generating={generating}
+              savingId={savingId}
+              finalizingId={finalizingId}
+              onGenerate={() => handleGenerate("draft-description")}
+              onRegenerate={handleRegenerate}
+              onSaveDraft={handleSaveDraft}
+              onFinalize={handleFinalize}
+            />
+          </TabsContent>
+        </Tabs>
       )}
 
-      {!error && (
-        <>
-          {/* Semester Selector */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <div className="flex flex-col sm:flex-row gap-4 items-end">
-              <div className="flex-1 w-full">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Pilih Semester</label>
-                <select
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                  value={selectedRecord}
-                  onChange={(e) => setSelectedRecord(e.target.value)}
-                >
-                  <option value="">Pilih semester...</option>
-                  {records.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.academicYear?.year} - Sem {r.semester === 1 ? "Ganjil" : "Genap"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="w-full sm:w-44">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Tipe AI</label>
-                <select
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                  value={aiType}
-                  onChange={(e) => setAiType(e.target.value as AiType)}
-                >
-                  <option value="summary">Student Summary</option>
-                  <option value="draft-description">Draft Deskripsi</option>
-                </select>
-              </div>
-              <button
-                onClick={generate}
-                disabled={!selectedRecord || generating}
-                className="h-10 px-5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
-              >
-                {generating && <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />}
-                Generate
-              </button>
-            </div>
-          </div>
+      {/* ── Disclaimer ───────────────────────────────────────────── */}
+      <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl">
+        <AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-800 leading-relaxed">
+          <strong>Catatan:</strong> AI Assistant berfungsi untuk memberikan saran draf awal. Seluruh teks wajib dibaca dan dapat disesuaikan kembali oleh Guru sebelum dilakukan finalisasi ke buku induk.
+        </p>
+      </div>
+    </div>
+  );
+}
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Left: AI Tasks */}
-            <div className="lg:col-span-2 space-y-3">
-              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-blue-500" />
-                Tugas AI Anda
-                <span className="px-2 py-0.5 text-[10px] bg-gray-100 text-gray-500 rounded-full font-medium">
-                  {aiTasks.length} Tugas
-                </span>
-              </h3>
+// ── Komponen Pembantu untuk menampilkan Konten AI ──────────────
+function AiContentPanel({
+  title,
+  description,
+  aiType,
+  summary,
+  draftContent,
+  setDraftContent,
+  loading,
+  generating,
+  savingId,
+  finalizingId,
+  onGenerate,
+  onRegenerate,
+  onSaveDraft,
+  onFinalize,
+}: {
+  title: string;
+  description: string;
+  aiType: AiType;
+  summary: AiSummary | null;
+  draftContent: Record<string, string>;
+  setDraftContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  loading: boolean;
+  generating: boolean;
+  savingId: string | null;
+  finalizingId: string | null;
+  onGenerate: () => void;
+  onRegenerate: (id: string) => void;
+  onSaveDraft: (s: AiSummary) => void;
+  onFinalize: (s: AiSummary) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="bg-white border border-gray-100 rounded-xl p-12 flex flex-col items-center justify-center min-h-[300px]">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-500 mb-3" />
+        <p className="text-sm text-gray-500">Memuat data AI...</p>
+      </div>
+    );
+  }
 
-              {aiTasks.map((task) => {
-                const Icon = task.icon;
-                const isSelected = aiType === task.id;
-                return (
-                  <button
-                    key={task.id}
-                    onClick={() => setAiType(task.id as AiType)}
-                    className={`w-full text-left p-4 rounded-xl border transition-all ${
-                      isSelected
-                        ? "bg-blue-50 border-blue-200"
-                        : "bg-white border-gray-100 hover:border-gray-200"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                        isSelected ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-400"
-                      }`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-gray-900">{task.title}</p>
-                          {task.needsReview && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-600 rounded uppercase">
-                              Butuh Tinjauan
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">{task.description}</p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+  // JIKA BELUM ADA KONTEN SAMA SEKALI
+  if (!summary) {
+    return (
+      <div className="bg-white border-2 border-dashed border-gray-200 rounded-xl p-10 flex flex-col items-center justify-center min-h-[300px] text-center">
+        <Sparkles className="w-10 h-10 text-gray-300 mb-3" />
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Belum ada {title}</h3>
+        <p className="text-xs text-gray-500 max-w-sm mb-6">{description}</p>
+        <button
+          onClick={onGenerate}
+          disabled={generating}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-medium text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+        >
+          {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          {generating ? "Sedang Membuat..." : "Generate AI Sekarang"}
+        </button>
+      </div>
+    );
+  }
 
-              {/* Custom Analysis */}
-              <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-                <MessageCircle className="w-6 h-6 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm font-medium text-gray-700">Butuh Analisis Kustom?</p>
-                <p className="text-xs text-gray-400 mt-0.5">Tuliskan instruksi Anda sendiri untuk hasil yang lebih spesifik.</p>
-              </div>
-            </div>
+  const isDraft = !summary.isFinal;
+  const contentValue = isDraft ? (draftContent[summary.id] ?? summary.content) : summary.content;
+  const isChanged = isDraft && draftContent[summary.id] !== summary.content;
 
-            {/* Right: AI Result */}
-            <div className="lg:col-span-3">
-              {result ? (
-                <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                  <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-blue-500" />
-                      <h3 className="text-sm font-semibold text-gray-900">Hasil Generasi AI</h3>
-                    </div>
-                    <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
-                      result.isFinal
-                        ? "bg-green-50 text-green-600 border border-green-100"
-                        : "bg-orange-50 text-orange-600 border border-orange-100"
-                    }`}>
-                      {result.isFinal ? "Final" : "Perlu Tinjauan Guru"}
-                    </span>
-                  </div>
+  // JIKA SUDAH ADA KONTEN (DRAFT ATAU FINAL)
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+      {/* Header status */}
+      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {isDraft ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-700 rounded-md text-xs font-bold uppercase tracking-wider">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Status: Draft
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 rounded-md text-xs font-bold uppercase tracking-wider">
+              <Check className="w-3.5 h-3.5" />
+              Telah Difinalisasi
+            </span>
+          )}
+          <span className="text-xs text-gray-500 font-medium border-l border-gray-300 pl-3">
+            Versi {summary.version}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isDraft && (
+            <button
+              onClick={() => onRegenerate(summary.id)}
+              disabled={generating}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className={`w-3 h-3 ${generating ? "animate-spin" : ""}`} />
+              Buat Ulang
+            </button>
+          )}
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(contentValue);
+              toast.success("Teks disalin ke clipboard");
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            <Copy className="w-3 h-3" />
+            Salin Teks
+          </button>
+        </div>
+      </div>
 
-                  <div className="p-5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Editor Hasil</span>
-                      <div className="ml-auto flex gap-1">
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(result.content); toast.success("Disalin!"); }}
-                          className="w-7 h-7 rounded flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => regenerate(result.id)}
-                          disabled={regenerating}
-                          className="w-7 h-7 rounded flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
-                        >
-                          <RotateCcw className={`w-3.5 h-3.5 ${regenerating ? "animate-spin" : ""}`} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-700 leading-relaxed whitespace-pre-wrap min-h-[120px]">
-                      {result.content}
-                    </div>
-                  </div>
-
-                  <div className="px-5 pb-5 flex items-center justify-between">
-                    <span className="text-[10px] text-gray-400">
-                      v{result.version} • {result.summaryType}
-                    </span>
-                    <div className="flex gap-2">
-                      <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                        <Save className="w-3.5 h-3.5 inline mr-1.5" />
-                        Simpan Draft
-                      </button>
-                      {!result.isFinal && (
-                        <button
-                          onClick={() => finalize(result.id)}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          Konfirmasi & Review
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-                  <Sparkles className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                  <h3 className="text-sm font-semibold text-gray-700">Belum Ada Hasil</h3>
-                  <p className="text-xs text-gray-400 mt-1">Pilih semester dan klik Generate untuk memulai analisis AI.</p>
-                </div>
-              )}
-
-              {/* History */}
-              {summaries.length > 0 && (
-                <div className="mt-4 bg-white rounded-xl border border-gray-100 p-5">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Riwayat AI</h3>
-                  <div className="space-y-2">
-                    {summaries.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => setResult(s)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all ${
-                          result?.id === s.id ? "bg-blue-50 border border-blue-100" : "bg-gray-50 hover:bg-gray-100"
-                        }`}
-                      >
-                        <div className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${
-                          s.isFinal ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
-                        }`}>
-                          {s.isFinal ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-700 truncate">{s.summaryType}</p>
-                          <p className="text-[10px] text-gray-400">v{s.version}</p>
-                        </div>
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          s.isFinal ? "bg-green-50 text-green-600" : "bg-orange-50 text-orange-600"
-                        }`}>
-                          {s.isFinal ? "Final" : "Draft"}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Stats Footer */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-                <Users className="w-4 h-4 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-400 uppercase font-semibold">Total Analisis</p>
-                <p className="text-lg font-bold text-gray-900">{summaries.length}</p>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-400 uppercase font-semibold">Tinjauan Selesai</p>
-                <p className="text-lg font-bold text-gray-900">{analyzedCount}</p>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center">
-                <AlertCircle className="w-4 h-4 text-red-500" />
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-400 uppercase font-semibold">Belum Ditinjau</p>
-                <p className="text-lg font-bold text-gray-900">{pendingCount}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Disclaimer */}
-          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-3">
-            <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-            <p className="text-sm text-amber-700">
-              <strong>Penting:</strong> AI dapat membuat kesalahan. Selalu tinjau hasil analisis sebelum menggunakannya untuk laporan resmi sekolah. Guru bertanggung jawab penuh atas kebenaran narasi rapor.
+      {/* Editor / Viewer Area */}
+      <div className="p-5">
+        {isDraft ? (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 font-medium">
+              Silakan periksa dan sesuaikan teks di bawah ini sebelum melakukan finalisasi:
             </p>
+            <textarea
+              value={contentValue}
+              onChange={(e) =>
+                setDraftContent((prev) => ({ ...prev, [summary.id]: e.target.value }))
+              }
+              rows={12}
+              className="w-full p-4 border border-blue-200 rounded-lg text-sm text-gray-800 leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all resize-y bg-blue-50/20"
+            />
           </div>
-        </>
+        ) : (
+          <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700 leading-relaxed whitespace-pre-wrap min-h-[200px]">
+            {contentValue}
+          </div>
+        )}
+      </div>
+
+      {/* Footer Actions (Only for Drafts) */}
+      {isDraft && (
+        <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-gray-500">
+            {isChanged ? (
+              <span className="text-amber-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" /> Ada perubahan yang belum disimpan
+              </span>
+            ) : (
+              "Semua perubahan tersimpan."
+            )}
+          </p>
+          <div className="flex w-full sm:w-auto gap-2">
+            <button
+              onClick={() => onSaveDraft(summary)}
+              disabled={savingId === summary.id || !isChanged}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 bg-white font-medium text-sm rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+              {savingId === summary.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Simpan Draft
+            </button>
+            <button
+              onClick={() => onFinalize(summary)}
+              disabled={finalizingId === summary.id}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium text-sm rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {finalizingId === summary.id ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              Finalisasi
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

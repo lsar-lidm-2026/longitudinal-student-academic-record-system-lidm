@@ -1,7 +1,6 @@
 "use client";
 
 import { Component, type ReactNode } from "react";
-import { Button } from "./button";
 
 interface Props {
   children: ReactNode;
@@ -38,12 +37,15 @@ export class ErrorBoundary extends Component<Props, State> {
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-gray-900 mb-1">Terjadi Kesalahan</h3>
-            <p className="text-xs text-muted-foreground mb-4 max-w-md">
+            <p className="text-xs text-gray-500 mb-4 max-w-md">
               {this.state.error?.message || "Terjadi kesalahan yang tidak terduga"}
             </p>
-            <Button variant="primary" size="sm" onClick={this.handleRetry}>
+            <button 
+              onClick={this.handleRetry}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
               Coba Lagi
-            </Button>
+            </button>
           </div>
         )
       );

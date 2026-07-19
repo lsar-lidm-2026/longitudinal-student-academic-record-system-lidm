@@ -18,8 +18,6 @@ import {
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StudentTimeline } from "@/components/students/StudentTimeline";
-import { TracingBeam } from "@/components/ui/tracing-beam";
-import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import type { StudentProfile } from "@/types";
 
@@ -43,9 +41,10 @@ export default function StudentDetailPage() {
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto space-y-4">
-        <Skeleton className="h-12 w-64" />
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full rounded-2xl" />
+        {/* Native tailwind skeleton */}
+        <div className="h-12 w-64 bg-gray-200 animate-pulse rounded-lg" />
+        <div className="h-8 w-48 bg-gray-200 animate-pulse rounded-lg" />
+        <div className="h-64 w-full bg-gray-200 animate-pulse rounded-2xl" />
       </div>
     );
   }
@@ -65,7 +64,7 @@ export default function StudentDetailPage() {
   }
 
   if (!profile) {
-    return <div className="text-center py-12 text-muted-foreground">Siswa tidak ditemukan</div>;
+    return <div className="text-center py-12 text-gray-500">Siswa tidak ditemukan</div>;
   }
 
   const { student, semesterRecords } = profile;
@@ -114,7 +113,7 @@ export default function StudentDetailPage() {
         <div className="flex gap-2">
           <Link
             href={`/students/${params.id}/buku-induk`}
-            className="inline-flex items-center gap-2 px-3.5 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center gap-2 px-3.5 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors bg-white shadow-sm"
           >
             <Download className="w-4 h-4" />
             Ekspor Buku Induk
@@ -131,7 +130,7 @@ export default function StudentDetailPage() {
         {/* Left: Profile Card */}
         <div className="space-y-4">
           {/* Profile Card */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="h-24 bg-gradient-to-r from-blue-500 to-blue-400 relative">
               <div className="absolute -bottom-10 left-5">
                 <div className="w-20 h-20 rounded-xl bg-white border-4 border-white shadow-sm flex items-center justify-center">
@@ -142,7 +141,7 @@ export default function StudentDetailPage() {
             <div className="pt-12 pb-5 px-5">
               <div className="flex items-center gap-2 mb-1">
                 <h2 className="text-lg font-bold text-gray-900">{student.name}</h2>
-                <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-green-50 text-green-600 border border-green-100">
+                <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase tracking-wider">
                   Aktif
                 </span>
               </div>
@@ -161,7 +160,7 @@ export default function StudentDetailPage() {
           </div>
 
           {/* Quick Stats */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                 <TrendingUp className="w-4 h-4 text-blue-500" />
@@ -173,7 +172,7 @@ export default function StudentDetailPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
                 <Clock className="w-4 h-4 text-green-500" />
@@ -198,7 +197,7 @@ export default function StudentDetailPage() {
             <TabsContent value="akademik">
               <div className="space-y-4">
                 {/* Score Overview */}
-                <div className="bg-white rounded-xl border border-gray-100 p-5">
+                <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
                   <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-blue-500" />
                     Rekap Nilai per Semester
@@ -244,10 +243,10 @@ export default function StudentDetailPage() {
                   </Link>
                   <Link
                     href={`/students/${params.id}/ai`}
-                    className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-100 hover:border-purple-200 hover:shadow-sm transition-all group"
+                    className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all group"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center group-hover:bg-purple-100 transition-colors">
-                      <Trophy className="w-4 h-4 text-purple-500" />
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                      <Trophy className="w-4 h-4 text-blue-500" />
                     </div>
                     <span className="text-sm font-medium text-gray-700">AI Assistant</span>
                   </Link>
@@ -265,19 +264,19 @@ export default function StudentDetailPage() {
             </TabsContent>
 
             <TabsContent value="timeline">
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
                 {semesterRecords.length === 0 ? (
                   <p className="text-sm text-gray-400 py-8 text-center">Belum ada data semester</p>
                 ) : (
-                  <TracingBeam className="px-4">
+                  <div className="px-4 py-2">
                     <StudentTimeline semesterRecords={semesterRecords} />
-                  </TracingBeam>
+                  </div>
                 )}
               </div>
             </TabsContent>
 
             <TabsContent value="catatan">
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
                 <p className="text-sm text-gray-400 py-8 text-center">
                   Belum ada catatan guru untuk siswa ini.
                 </p>
@@ -303,7 +302,7 @@ function InfoRow({
     <div className="flex items-start gap-3">
       <Icon className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
       <div>
-        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">{label}</p>
+        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{label}</p>
         <p className="text-sm text-gray-700">{value}</p>
       </div>
     </div>

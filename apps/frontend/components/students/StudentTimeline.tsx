@@ -1,8 +1,6 @@
 "use client";
 
 import { SemesterRecord } from "@/types";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 
 interface StudentTimelineProps {
   semesterRecords: SemesterRecord[];
@@ -51,9 +49,9 @@ export function StudentTimeline({ semesterRecords }: StudentTimelineProps) {
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <Badge variant="info">
+                  <span className="bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border border-blue-100">
                     {record.academicYear?.year || "TA"}
-                  </Badge>
+                  </span>
                   <span className="text-sm font-semibold text-gray-900">
                     Semester {record.semester === 1 ? "Ganjil" : "Genap"}
                   </span>
@@ -71,7 +69,7 @@ export function StudentTimeline({ semesterRecords }: StudentTimelineProps) {
                 </div>
               </div>
 
-              <Separator className="mb-3" />
+              <div className="h-px bg-gray-100 w-full mb-3" />
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {record.subjectScores.slice(0, 4).map((sc) => (
@@ -88,7 +86,7 @@ export function StudentTimeline({ semesterRecords }: StudentTimelineProps) {
                   </div>
                 ))}
                 {record.subjectScores.length > 4 && (
-                  <div className="flex items-center justify-center text-xs text-muted-foreground col-span-full">
+                  <div className="flex items-center justify-center text-xs text-muted-foreground col-span-full mt-2">
                     +{record.subjectScores.length - 4} mata pelajaran lainnya
                   </div>
                 )}

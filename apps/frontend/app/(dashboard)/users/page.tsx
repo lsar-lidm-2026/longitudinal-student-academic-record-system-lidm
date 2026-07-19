@@ -2,28 +2,23 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { AuthGuard } from "@/components/layout/AuthGuard";
-import { MagicCard } from "@/components/ui/magic-card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { BorderBeam } from "@/components/ui/border-beam";
-import { Separator } from "@/components/ui/separator";
-import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { Users, Plus, Pencil, X, Power, PowerOff, ShieldCheck } from "lucide-react";
 import type { User, Role } from "@/types";
 
-const roleConfig: Record<Role, { variant: "info" | "success" | "warning" | "danger"; label: string }> = {
-  ADMINISTRATOR: { variant: "danger", label: "Admin" },
-  OPERATOR_SEKOLAH: { variant: "warning", label: "Operator" },
-  GURU: { variant: "info", label: "Guru" },
-  KEPALA_SEKOLAH: { variant: "success", label: "Kepsek" },
+const roleConfig: Record<Role, { color: string; label: string }> = {
+  ADMINISTRATOR: { color: "bg-red-50 text-red-600 border-red-100", label: "Admin" },
+  OPERATOR_SEKOLAH: { color: "bg-amber-50 text-amber-600 border-amber-100", label: "Operator" },
+  GURU: { color: "bg-blue-50 text-blue-600 border-blue-100", label: "Guru" },
+  KEPALA_SEKOLAH: { color: "bg-emerald-50 text-emerald-600 border-emerald-100", label: "Kepsek" },
 };
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [saving, setSaving] = useState(false);
@@ -66,18 +61,16 @@ export default function UsersPage() {
 
     try {
       if (editingUser) {
-        // Update: hanya kirim name dan role (backend: PUT /users/:id)
         await api.handleResponse(
           api.put(`/users/${editingUser.id}`, {
             name: form.name,
             role: form.role,
           })
         );
-        toast.success("User berhasil diperbarui");
+        toast.success("Pengguna berhasil diperbarui");
         resetForm();
         load();
       } else {
-        // Create: Fix — sebelumnya POST /auth/users (salah), sekarang POST /users
         await api.handleResponse(
           api.post("/users", {
             username: form.username,
@@ -86,12 +79,12 @@ export default function UsersPage() {
             role: form.role,
           })
         );
-        toast.success("User berhasil dibuat");
+        toast.success("Pengguna berhasil dibuat");
         resetForm();
         load();
       }
     } catch (err: any) {
-      toast.error(err.message || "Gagal menyimpan user");
+      toast.error(err.message || "Gagal menyimpan pengguna");
     } finally {
       setSaving(false);
     }
@@ -100,7 +93,7 @@ export default function UsersPage() {
   async function toggleStatus(userId: string) {
     try {
       await api.handleResponse(api.patch(`/users/${userId}/status`));
-      toast.success("Status user berhasil diubah");
+      toast.success("Status pengguna berhasil diubah");
       load();
     } catch (err: any) {
       toast.error(err.message || "Gagal mengubah status");
@@ -131,163 +124,200 @@ export default function UsersPage() {
 
   return (
     <AuthGuard roles={["ADMINISTRATOR"]}>
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="relative">
-          <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
-          <div className="relative p-6 bg-gradient-to-br from-white via-purple-50/30 rounded-2xl border border-purple-100/50">
-            <div className="flex items-center justify-between">
-              <div>
-                <AnimatedShinyText className="text-2xl font-bold text-gray-900">
-                  Pengguna
-                </AnimatedShinyText>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {users.length} pengguna terdaftar
-                </p>
-              </div>
-              <Button
-                onClick={() => {
-                  resetForm();
-                  setShowForm(!showForm);
-                }}
-              >
-                {showForm ? "Batal" : "Tambah User"}
-              </Button>
-            </div>
+      <div className="space-y-6">
+        
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-500" />
+              Pengguna Sistem
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Kelola akun administrator, operator, dan guru.
+            </p>
           </div>
+          <button
+            onClick={() => {
+              resetForm();
+              setShowForm(!showForm);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showForm ? "Batal" : "Tambah Pengguna"}
+          </button>
         </div>
 
-        {showForm && (
-          <MagicCard className="p-6" gradientSize={200}>
-            <h3 className="text-base font-semibold text-gray-900 mb-4">
-              {editingUser ? "Edit User" : "Tambah User Baru"}
-            </h3>
-            <Separator className="mb-4" />
-            <form onSubmit={save} className="space-y-4">
-              {!editingUser && (
-                <Input
-                  label="Username"
-                  value={form.username}
-                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                  required
-                  disabled={saving}
-                />
-              )}
-              {editingUser && (
-                <div className="p-3 bg-gray-50/50 rounded-lg text-sm">
-                  <span className="text-muted-foreground">Username: </span>
-                  <span className="font-medium text-gray-900">{form.username}</span>
-                </div>
-              )}
-              <Input
-                label="Nama Lengkap"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                required
-                disabled={saving}
-              />
-              {!editingUser && (
-                <Input
-                  label="Password"
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  required
-                  minLength={6}
-                  disabled={saving}
-                />
-              )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                <select
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white hover:border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
-                  value={form.role}
-                  onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))}
-                  disabled={saving}
-                >
-                  <option value="GURU">Guru</option>
-                  <option value="OPERATOR_SEKOLAH">Operator Sekolah</option>
-                  <option value="ADMINISTRATOR">Administrator</option>
-                  <option value="KEPALA_SEKOLAH">Kepala Sekolah</option>
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <Button type="submit" disabled={saving}>
-                  {saving ? (
-                    <span className="flex items-center gap-2">
-                      <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
-                      Menyimpan...
-                    </span>
-                  ) : editingUser ? (
-                    "Simpan Perubahan"
-                  ) : (
-                    "Simpan"
-                  )}
-                </Button>
-                <Button type="button" variant="secondary" onClick={resetForm} disabled={saving}>
-                  Batal
-                </Button>
-              </div>
-            </form>
-          </MagicCard>
-        )}
-
-        <MagicCard className="p-0 overflow-hidden" gradientSize={300}>
-          <div className="p-4 pb-0">
-            <h3 className="text-sm font-medium text-muted-foreground">Daftar Pengguna</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+          
+          {/* Main Table Area */}
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm order-2 lg:order-1">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Username</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Nama</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                    <td className="py-3 px-4 text-sm font-medium text-gray-900">{user.username}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{user.name}</td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${roleConfig[user.role].color}`}>
+                        {roleConfig[user.role].label}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      {user.isActive ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Aktif
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Nonaktif
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => startEdit(user)}
+                          title="Edit Pengguna"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => toggleStatus(user.id)}
+                          title={user.isActive ? "Nonaktifkan" : "Aktifkan"}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                            user.isActive 
+                              ? "text-gray-400 hover:text-red-600 hover:bg-red-50" 
+                              : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
+                          }`}
+                        >
+                          {user.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {users.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
+                      Belum ada pengguna terdaftar.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-          <Separator className="mt-3" />
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Username</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Nama</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Role</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b border-gray-50 hover:bg-purple-50/30 transition-colors">
-                  <td className="py-3 px-4 text-sm text-gray-900">{user.username}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{user.name}</td>
-                  <td className="py-3 px-4">
-                    <Badge variant={roleConfig[user.role].variant}>
-                      {roleConfig[user.role].label}
-                    </Badge>
-                  </td>
-                  <td className="py-3 px-4">
-                    <Badge variant={user.isActive ? "success" : "danger"}>
-                      {user.isActive ? "Aktif" : "Nonaktif"}
-                    </Badge>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => startEdit(user)}>
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleStatus(user.id)}
-                        className={user.isActive ? "text-red-600" : "text-green-600"}
-                      >
-                        {user.isActive ? "Nonaktifkan" : "Aktifkan"}
-                      </Button>
+
+          {/* Right Sidebar Form */}
+          <div className="order-1 lg:order-2 space-y-4">
+            {showForm ? (
+              <div className="bg-white rounded-xl border border-blue-100 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-blue-500" />
+                  {editingUser ? "Edit Pengguna" : "Tambah Pengguna"}
+                </h3>
+                <form onSubmit={save} className="space-y-4">
+                  {!editingUser ? (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Username</label>
+                      <input
+                        type="text"
+                        value={form.username}
+                        onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                        required
+                        disabled={saving}
+                        className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                      />
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {users.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
-                    Belum ada pengguna terdaftar.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </MagicCard>
+                  ) : (
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm flex justify-between">
+                      <span className="text-gray-500">Username</span>
+                      <span className="font-semibold text-gray-900">{form.username}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Nama Lengkap</label>
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                      required
+                      disabled={saving}
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                    />
+                  </div>
+
+                  {!editingUser && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
+                      <input
+                        type="password"
+                        value={form.password}
+                        onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                        required
+                        minLength={6}
+                        disabled={saving}
+                        className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Hak Akses (Role)</label>
+                    <select
+                      value={form.role}
+                      onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))}
+                      disabled={saving}
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                    >
+                      <option value="GURU">Guru</option>
+                      <option value="OPERATOR_SEKOLAH">Operator Sekolah</option>
+                      <option value="ADMINISTRATOR">Administrator</option>
+                      <option value="KEPALA_SEKOLAH">Kepala Sekolah</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-2 flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="flex-1 inline-flex items-center justify-center h-10 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      {saving ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      ) : editingUser ? (
+                        "Simpan Perubahan"
+                      ) : (
+                        "Tambahkan"
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 text-center text-blue-800">
+                <ShieldCheck className="w-8 h-8 text-blue-300 mx-auto mb-2" />
+                <p className="text-sm font-medium">Manajemen Akses</p>
+                <p className="text-xs text-blue-600 mt-1 leading-relaxed">
+                  Hanya Administrator yang dapat mengelola pengguna. Pastikan Anda mengatur role yang sesuai.
+                </p>
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
     </AuthGuard>
   );
