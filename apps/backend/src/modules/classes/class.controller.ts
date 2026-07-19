@@ -34,7 +34,7 @@ export const classController = new Elysia({ prefix: "/classes" })
     // ADMIN, OPERATOR, KEPSEK, GURU bisa melihat daftar kelas
     checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH", "GURU");
     logger.info({ requesterId: user.userId, all: query.all, yearId: query.yearId }, "List all classes");
-    const data = await service.list(query.all === "true", query.yearId);
+    const data = await service.list(query.all === "true", query.yearId, user.userId, user.role);
     return success(data);
   }, {
     query: t.Optional(t.Object({

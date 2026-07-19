@@ -29,24 +29,27 @@ import { NotFoundError, ValidationError } from "../../common/error";
  *
  * @returns - Promise<Class[]> dengan include academicYear.year, homeroomTeacher, _count.students
  */
-export async function list(all?: boolean, yearId?: string) {
-  logger.debug({ all, yearId }, "class.service.list — start");
+export async function list(all?: boolean, yearId?: string, userId?: string, userRole?: string) {
+  logger.debug({ all, yearId, userId, userRole }, "class.service.list — start");
 
-  // Build year filter:
-  // 1. If yearId explicitly provided → filter by that year
-  // 2. If ?all=true → no filter (return all years)
-  // 3. Default → filter to active academic year only
-  let yearFilter: { academicYearId: string } | undefined;
+  // Build filters:
+  let where: any = {};
 
+  // 1. Year filter
   if (yearId) {
-    yearFilter = { academicYearId: yearId };
+    where.academicYearId = yearId;
   } else if (!all) {
     const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
-    if (activeYear) yearFilter = { academicYearId: activeYear.id };
+    if (activeYear) where.academicYearId = activeYear.id;
+  }
+
+  // 2. Guru hanya bisa melihat kelas yang diampu
+  if (userRole === "GURU" && userId) {
+    where.homeroomTeacherId = userId;
   }
 
   const classes = await prisma.class.findMany({
-    where: yearFilter,
+    where,
     include: {
       academicYear: { select: { year: true } },
       homeroomTeacher: { select: { id: true, name: true } },

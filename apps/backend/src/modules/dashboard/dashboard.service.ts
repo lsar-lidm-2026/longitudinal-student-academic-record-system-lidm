@@ -64,18 +64,21 @@ export async function getSummary(userId: string, role: Role) {
 
   // === GURU: akses data terbatas pada kelas yang diampu ===
   if (role === "GURU") {
-    // Ambil kelas-kelas yang diampu oleh guru ini
-    const managedClasses = await prisma.class.findMany({
-      where: { homeroomTeacherId: userId },
-      select: { id: true, name: true },
-    });
+    // Cari tahun ajaran aktif dulu
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
+    // Ambil kelas-kelas yang diampu oleh guru ini di tahun aktif SAJA (bukan semua tahun)
+    const managedClasses = activeYear
+      ? await prisma.class.findMany({
+          where: { homeroomTeacherId: userId, academicYearId: activeYear.id },
+          select: { id: true, name: true },
+        })
+      : [];
 
     const classIds = managedClasses.map((c) => c.id); // Array ID kelas yang diampu
 
     // Eksekusi 3 query paralel dengan filter classIds
-    const [totalStudents, activeYear, pendingAiDrafts] = await Promise.all([
+    const [totalStudents, pendingAiDrafts] = await Promise.all([
       prisma.student.count({ where: { classId: { in: classIds } } }),           // Siswa di kelas yang diampu
-      prisma.academicYear.findFirst({ where: { isActive: true } }),              // Tahun ajaran aktif
       prisma.aiSummary.count({
         where: {
           isFinal: false,                                                        // Hanya draft yang belum final
