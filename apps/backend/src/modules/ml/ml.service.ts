@@ -808,10 +808,33 @@ export async function evaluateAllModels(): Promise<EvaluationReport> {
   // Analisis distribusi risiko
   const riskDistribution = analyzeRiskDistribution(allFeatures);
 
-  // Evaluasi cluster — dilewati untuk /ml/eval (mencegah trigger training 200 siswa)
-  // K-Means clustering adalah post-MVP (FR-17/P5). Silhouette & inertia tersedia
-  // di halaman ML Dashboard per kelas melalui endpoint /ml/cluster/class/:id
-  const clusterEvaluation = null;
+  // Evaluasi cluster — baca dari cache trainer (tanpa trigger training ulang)
+  let clusterEvaluation = null;
+  try {
+    const { getCachedModels } = await import("./trainer");
+    const cached = getCachedModels();
+    if (cached.clusterModel && allFeatures.length > 0) {
+      // Coba evaluasi cluster dengan model yang sudah di-cache
+      const maxes = [
+        Math.max(...allFeatures.map((f) => f.avgKnowledge), 100),
+        Math.max(...allFeatures.map((f) => f.avgSkills), 100),
+        Math.max(...allFeatures.map((f) => f.totalAbsence), 10),
+        Math.max(...allFeatures.map((f) => f.achievementCount), 5),
+      ];
+      const clusterVectors = allFeatures.map((f) => [
+        f.avgKnowledge / Math.max(maxes[0], 100),
+        f.avgSkills / Math.max(maxes[1], 100),
+        Math.min(f.totalAbsence / Math.max(maxes[2], 10), 1),
+        Math.min(f.achievementCount / Math.max(maxes[3], 5), 1),
+      ]);
+      clusterEvaluation = evaluateCluster(clusterVectors, cached.clusterModel);
+      logger.debug({ clusterEvaluation }, "Cluster evaluation computed from cache");
+    } else {
+      logger.debug({}, "Cluster model not in cache — skipping cluster evaluation");
+    }
+  } catch (e) {
+    logger.debug({ err: e }, "Cluster evaluation skipped");
+  }
 
   // Evaluasi tren — untuk setiap siswa dengan minimal 2 semester data
   const trendResults: Array<{ slope: number; rSquared: number; nPoints: number }> = [];

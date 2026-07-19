@@ -75,6 +75,16 @@ export function resetCache() {
 }
 
 /**
+ * getCachedModels — Membaca cache model TANPA trigger training.
+ * 
+ * Berbeda dengan getModels() yang akan auto-train jika cache kosong,
+ * fungsi ini hanya mengembalikan cache apa adanya.
+ */
+export function getCachedModels(): TrainedModels {
+  return cachedModels;
+}
+
+/**
  * extractClusterVector
  * 
  * Menormalisasi feature vector siswa ke rentang [0, 1] untuk input K-Means.
