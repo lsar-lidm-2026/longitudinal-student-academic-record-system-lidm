@@ -14,10 +14,13 @@ import {
   Save,
   Plus,
   User,
+  Trash2,
+  Pencil,
+  X,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { AcademicYear, SemesterRecord } from "@/types";
+import type { AcademicYear, SemesterRecord, Achievement, HealthRecord } from "@/types";
 
 const SUBJECTS = [
   "Pendidikan Agama & Budi Pekerti",
@@ -30,7 +33,6 @@ const SUBJECTS = [
   "PJOK",
 ];
 
-// Score value options for dropdown
 const SCORE_OPTIONS = Array.from({ length: 101 }, (_, i) => i);
 
 function getGrade(score: number): string {
@@ -45,8 +47,30 @@ interface SubjectScoreInput {
   knowledgeScore: number;
   skillsScore: number;
   kkm: number;
+  notes: string;
+}
+
+interface AchievementForm {
+  title: string;
+  type: string;
   description: string;
 }
+
+interface HealthForm {
+  height: string;
+  weight: string;
+  hearingCondition: string;
+  visionCondition: string;
+  teethCondition: string;
+}
+
+const emptyHealthForm = (): HealthForm => ({
+  height: "",
+  weight: "",
+  hearingCondition: "",
+  visionCondition: "",
+  teethCondition: "",
+});
 
 export default function SemesterRecordsPage() {
   const params = useParams();
@@ -54,15 +78,27 @@ export default function SemesterRecordsPage() {
   const [records, setRecords] = useState<SemesterRecord[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedYear, setSelectedYear] = useState("");
-  const [semester, setSemester] = useState(1);
+  const [semester, setSemester] = useState<1 | 2>(1);
   const [recordId, setRecordId] = useState<string | null>(null);
   const [scores, setScores] = useState<SubjectScoreInput[]>(
-    SUBJECTS.map((s) => ({ subjectName: s, knowledgeScore: 0, skillsScore: 0, kkm: 75, description: "" }))
+    SUBJECTS.map((s) => ({ subjectName: s, knowledgeScore: 0, skillsScore: 0, kkm: 75, notes: "" }))
   );
   const [attendance, setAttendance] = useState({ sick: 0, permission: 0, absent: 0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Achievements state
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [achievementForm, setAchievementForm] = useState<AchievementForm>({ title: "", type: "Akademik", description: "" });
+  const [editingAchievement, setEditingAchievement] = useState<Achievement | null>(null);
+  const [showAchievementForm, setShowAchievementForm] = useState(false);
+  const [savingAchievement, setSavingAchievement] = useState(false);
+
+  // Health state
+  const [healthRecord, setHealthRecord] = useState<HealthRecord | null>(null);
+  const [healthForm, setHealthForm] = useState<HealthForm>(emptyHealthForm());
+  const [savingHealth, setSavingHealth] = useState(false);
 
   function refresh() {
     setLoading(true);
@@ -87,48 +123,104 @@ export default function SemesterRecordsPage() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { refresh(); }, [params.id]);
+  useEffect(() => {
+    refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
+
+  /** Load data dari record yang dipilih ke form state */
+  function loadRecordData(record: SemesterRecord) {
+    setRecordId(record.id);
+
+    // Nilai
+    if (record.subjectScores.length > 0) {
+      setScores(
+        SUBJECTS.map((s) => {
+          const found = record.subjectScores.find((sc) => sc.subjectName === s);
+          return found
+            ? {
+                subjectName: s,
+                knowledgeScore: found.knowledgeScore,
+                skillsScore: found.skillsScore,
+                kkm: 75,
+                notes: found.notes || "",
+              }
+            : { subjectName: s, knowledgeScore: 0, skillsScore: 0, kkm: 75, notes: "" };
+        })
+      );
+    } else {
+      setScores(SUBJECTS.map((s) => ({ subjectName: s, knowledgeScore: 0, skillsScore: 0, kkm: 75, notes: "" })));
+    }
+
+    // Kehadiran
+    if (record.attendance) {
+      setAttendance({
+        sick: record.attendance.sick,
+        permission: record.attendance.permission,
+        absent: record.attendance.absent,
+      });
+    } else {
+      setAttendance({ sick: 0, permission: 0, absent: 0 });
+    }
+
+    // Prestasi
+    setAchievements(record.achievements || []);
+    setShowAchievementForm(false);
+    setEditingAchievement(null);
+    setAchievementForm({ title: "", type: "Akademik", description: "" });
+
+    // Kesehatan
+    setHealthRecord(record.healthRecord);
+    if (record.healthRecord) {
+      setHealthForm({
+        height: record.healthRecord.height?.toString() || "",
+        weight: record.healthRecord.weight?.toString() || "",
+        hearingCondition: record.healthRecord.hearingCondition || "",
+        visionCondition: record.healthRecord.visionCondition || "",
+        teethCondition: record.healthRecord.teethCondition || "",
+      });
+    } else {
+      setHealthForm(emptyHealthForm());
+    }
+  }
 
   async function createOrGetRecord(): Promise<string | null> {
+    if (saving) return null; // Guard concurrent call
+
     const existing = records.find(
       (r) => r.academicYearId === selectedYear && r.semester === semester
     );
     if (existing) {
-      setRecordId(existing.id);
-      if (existing.subjectScores.length > 0) {
-        setScores(
-          SUBJECTS.map((s) => {
-            const found = existing.subjectScores.find((sc) => sc.subjectName === s);
-            return found
-              ? { subjectName: s, knowledgeScore: found.knowledgeScore, skillsScore: found.skillsScore, kkm: 75, description: found.notes || "" }
-              : { subjectName: s, knowledgeScore: 0, skillsScore: 0, kkm: 75, description: "" };
-          })
-        );
-      }
-      if (existing.attendance) {
-        setAttendance({
-          sick: existing.attendance.sick,
-          permission: existing.attendance.permission,
-          absent: existing.attendance.absent,
-        });
-      }
+      loadRecordData(existing);
       return existing.id;
     }
 
-    const data = await api.handleResponse(api.post<SemesterRecord>(`/students/${params.id}/semester-records`, {
-      academicYearId: selectedYear,
-      semester,
-    }));
-    setRecordId(data.id);
-    setRecords((prev) => [...prev, data]);
-    return data.id;
+    try {
+      const data = await api.handleResponse(
+        api.post<SemesterRecord>(`/students/${params.id}/semester-records`, {
+          academicYearId: selectedYear,
+          semester,
+        })
+      );
+      setRecordId(data.id);
+      setRecords((prev) => [...prev, data]);
+      setAchievements([]);
+      setHealthRecord(null);
+      setHealthForm(emptyHealthForm());
+      return data.id;
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membuat record semester");
+      return null;
+    }
   }
 
   async function saveAll(e: FormEvent) {
     e.preventDefault();
 
     const hasInvalid = scores.some(
-      (s) => s.knowledgeScore < 0 || s.knowledgeScore > 100 || s.skillsScore < 0 || s.skillsScore > 100
+      (s) =>
+        s.knowledgeScore < 0 || s.knowledgeScore > 100 ||
+        s.skillsScore < 0 || s.skillsScore > 100
     );
     if (hasInvalid) {
       toast.error("Nilai harus antara 0 - 100");
@@ -144,31 +236,123 @@ export default function SemesterRecordsPage() {
       }
       if (!currentRecordId) {
         toast.error("Gagal membuat record semester");
-        setSaving(false);
         return;
       }
 
-      const scoresRes = await api.put(`/semester-records/${currentRecordId}/subject-scores/batch`, {
-        scores: scores.map(s => ({
-          subjectName: s.subjectName,
-          knowledgeScore: s.knowledgeScore,
-          skillsScore: s.skillsScore,
-        }))
-      });
-      if (!scoresRes.success) throw new Error(scoresRes.error?.message || "Gagal menyimpan nilai");
+      // Fix: gunakan api.handleResponse() konsisten + kirim notes (bukan description)
+      await api.handleResponse(
+        api.put(`/semester-records/${currentRecordId}/subject-scores/batch`, {
+          scores: scores.map((s) => ({
+            subjectName: s.subjectName,
+            knowledgeScore: s.knowledgeScore,
+            skillsScore: s.skillsScore,
+            notes: s.notes,
+          })),
+        })
+      );
 
-      const attRes = await api.put(`/semester-records/${currentRecordId}/attendance`, attendance);
-      if (!attRes.success) throw new Error(attRes.error?.message || "Gagal menyimpan kehadiran");
+      await api.handleResponse(
+        api.put(`/semester-records/${currentRecordId}/attendance`, attendance)
+      );
 
-      toast.success("Data berhasil disimpan!");
+      toast.success("Data nilai dan kehadiran berhasil disimpan!");
     } catch (err: any) {
       toast.error(err.message || "Gagal menyimpan data");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   }
 
-  const activeYear = academicYears.find(y => y.id === selectedYear);
+  // ── Achievements handlers ─────────────────────────────────────────
+
+  async function saveAchievement(e: FormEvent) {
+    e.preventDefault();
+    if (!recordId) return;
+    setSavingAchievement(true);
+
+    try {
+      if (editingAchievement) {
+        const updated = await api.handleResponse(
+          api.put<Achievement>(`/semester-records/achievements/${editingAchievement.id}`, {
+            title: achievementForm.title,
+            type: achievementForm.type,
+            description: achievementForm.description || undefined,
+          })
+        );
+        setAchievements((prev) =>
+          prev.map((a) => (a.id === editingAchievement.id ? updated : a))
+        );
+        toast.success("Prestasi berhasil diperbarui");
+      } else {
+        const created = await api.handleResponse(
+          api.post<Achievement>(`/semester-records/${recordId}/achievements`, {
+            title: achievementForm.title,
+            type: achievementForm.type,
+            description: achievementForm.description || undefined,
+          })
+        );
+        setAchievements((prev) => [...prev, created]);
+        toast.success("Prestasi berhasil ditambahkan");
+      }
+      resetAchievementForm();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan prestasi");
+    } finally {
+      setSavingAchievement(false);
+    }
+  }
+
+  async function deleteAchievement(achievementId: string) {
+    try {
+      await api.handleResponse(
+        api.delete(`/semester-records/achievements/${achievementId}`)
+      );
+      setAchievements((prev) => prev.filter((a) => a.id !== achievementId));
+      toast.success("Prestasi berhasil dihapus");
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus prestasi");
+    }
+  }
+
+  function startEditAchievement(a: Achievement) {
+    setEditingAchievement(a);
+    setAchievementForm({ title: a.title, type: a.type, description: a.description || "" });
+    setShowAchievementForm(true);
+  }
+
+  function resetAchievementForm() {
+    setShowAchievementForm(false);
+    setEditingAchievement(null);
+    setAchievementForm({ title: "", type: "Akademik", description: "" });
+  }
+
+  // ── Health handlers ───────────────────────────────────────────────
+
+  async function saveHealth(e: FormEvent) {
+    e.preventDefault();
+    if (!recordId) return;
+    setSavingHealth(true);
+
+    try {
+      const updated = await api.handleResponse(
+        api.put<HealthRecord>(`/semester-records/${recordId}/health-record`, {
+          height: healthForm.height ? Number(healthForm.height) : undefined,
+          weight: healthForm.weight ? Number(healthForm.weight) : undefined,
+          hearingCondition: healthForm.hearingCondition || undefined,
+          visionCondition: healthForm.visionCondition || undefined,
+          teethCondition: healthForm.teethCondition || undefined,
+        })
+      );
+      setHealthRecord(updated);
+      toast.success("Data kesehatan berhasil disimpan");
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan data kesehatan");
+    } finally {
+      setSavingHealth(false);
+    }
+  }
+
+  const activeYear = academicYears.find((y) => y.id === selectedYear);
 
   if (loading) {
     return (
@@ -215,7 +399,7 @@ export default function SemesterRecordsPage() {
           </div>
           <div>
             <h2 className="text-base font-bold text-gray-900">{studentName || "Siswa"}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">NISN: {params.id}</p>
+            <p className="text-xs text-gray-400 mt-0.5">ID: {params.id}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -236,7 +420,7 @@ export default function SemesterRecordsPage() {
             <select
               className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
               value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
+              onChange={(e) => { setSelectedYear(e.target.value); setRecordId(null); }}
             >
               {academicYears.map((y) => (
                 <option key={y.id} value={y.id}>
@@ -250,7 +434,7 @@ export default function SemesterRecordsPage() {
             <select
               className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
               value={semester}
-              onChange={(e) => setSemester(Number(e.target.value))}
+              onChange={(e) => { setSemester(Number(e.target.value) as 1 | 2); setRecordId(null); }}
             >
               <option value={1}>Ganjil</option>
               <option value={2}>Genap</option>
@@ -258,41 +442,50 @@ export default function SemesterRecordsPage() {
           </div>
           <button
             onClick={createOrGetRecord}
-            className={`h-10 px-4 rounded-lg text-sm font-medium transition-all ${
+            disabled={saving}
+            className={`h-10 px-4 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${
               recordId
                 ? "bg-green-50 text-green-600 border border-green-200"
                 : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
             }`}
           >
-            {recordId ? "✓ Record Siap" : "Buat Record"}
+            {recordId ? "✓ Record Siap" : "Buat / Muat Record"}
           </button>
         </div>
       </div>
 
       {/* Tabs Content */}
       {recordId && (
-        <form onSubmit={saveAll}>
-          <Tabs defaultValue="nilai">
-            <TabsList variant="line" className="mb-4">
-              <TabsTrigger value="nilai" className="gap-1.5">
-                <BookOpen className="w-3.5 h-3.5" /> Nilai
-              </TabsTrigger>
-              <TabsTrigger value="kehadiran" className="gap-1.5">
-                <CalendarCheck className="w-3.5 h-3.5" /> Kehadiran
-              </TabsTrigger>
-              <TabsTrigger value="prestasi" className="gap-1.5">
-                <Trophy className="w-3.5 h-3.5" /> Prestasi
-              </TabsTrigger>
-              <TabsTrigger value="kesehatan" className="gap-1.5">
-                <Heart className="w-3.5 h-3.5" /> Kesehatan
-              </TabsTrigger>
-              <TabsTrigger value="catatan" className="gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> Catatan
-              </TabsTrigger>
-            </TabsList>
+        <Tabs defaultValue="nilai">
+          <TabsList variant="line" className="mb-4">
+            <TabsTrigger value="nilai" className="gap-1.5">
+              <BookOpen className="w-3.5 h-3.5" /> Nilai
+            </TabsTrigger>
+            <TabsTrigger value="kehadiran" className="gap-1.5">
+              <CalendarCheck className="w-3.5 h-3.5" /> Kehadiran
+            </TabsTrigger>
+            <TabsTrigger value="prestasi" className="gap-1.5">
+              <Trophy className="w-3.5 h-3.5" /> Prestasi
+              {achievements.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-600 rounded-full">
+                  {achievements.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="kesehatan" className="gap-1.5">
+              <Heart className="w-3.5 h-3.5" /> Kesehatan
+              {healthRecord && (
+                <span className="ml-1 px-1.5 py-0.5 text-[9px] font-bold bg-green-100 text-green-600 rounded-full">✓</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="catatan" className="gap-1.5">
+              <FileText className="w-3.5 h-3.5" /> Catatan
+            </TabsTrigger>
+          </TabsList>
 
-            {/* Nilai Tab */}
-            <TabsContent value="nilai">
+          {/* ── Tab: Nilai ────────────────────────────────────── */}
+          <TabsContent value="nilai">
+            <form onSubmit={saveAll}>
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <div className="p-5 border-b border-gray-100">
                   <div className="flex items-center gap-2">
@@ -300,7 +493,7 @@ export default function SemesterRecordsPage() {
                     <h3 className="text-sm font-semibold text-gray-900">Input Nilai Mata Pelajaran</h3>
                   </div>
                   <p className="text-xs text-gray-400 mt-1 ml-6">
-                    Pilih nilai akhir semester untuk setiap mata pelajaran menggunakan dropdown.
+                    Isi nilai pengetahuan dan nilai keterampilan secara terpisah.
                   </p>
                 </div>
 
@@ -308,10 +501,11 @@ export default function SemesterRecordsPage() {
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/50">
                       <th className="text-left py-3 px-5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Mata Pelajaran</th>
-                      <th className="text-center py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-20">KKM</th>
-                      <th className="text-center py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-24">Nilai</th>
-                      <th className="text-center py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-20">Predikat</th>
-                      <th className="text-left py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Deskripsi Kompetensi</th>
+                      <th className="text-center py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-16">KKM</th>
+                      <th className="text-center py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-24">Pengetahuan</th>
+                      <th className="text-center py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-24">Keterampilan</th>
+                      <th className="text-center py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider w-16">Predikat</th>
+                      <th className="text-left py-3 px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Catatan/Deskripsi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -324,41 +518,68 @@ export default function SemesterRecordsPage() {
                             value={score.knowledgeScore}
                             onChange={(e) => {
                               const val = Number(e.target.value);
-                              setScores(prev => prev.map((s, i) =>
-                                i === idx ? { ...s, knowledgeScore: val, skillsScore: val } : s
-                              ));
+                              setScores((prev) =>
+                                prev.map((s, i) => (i === idx ? { ...s, knowledgeScore: val } : s))
+                              );
                             }}
-                            className={`w-24 h-9 px-1.5 border rounded-lg text-sm text-center bg-white outline-none transition-all font-medium ${
+                            className={`w-20 h-9 px-1.5 border rounded-lg text-sm text-center bg-white outline-none transition-all font-medium ${
                               score.knowledgeScore > 0 && score.knowledgeScore < 75
                                 ? "border-red-300 text-red-600 bg-red-50/30 focus:border-red-400 focus:ring-2 focus:ring-red-100"
                                 : "border-gray-200 text-gray-700 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                             }`}
                           >
-                            {SCORE_OPTIONS.map(v => (
-                              <option key={v} value={v} className={v < 75 && v > 0 ? "text-red-500 font-medium" : "text-gray-700"}>
-                                {v} {v < 75 && v > 0 ? "⚠️" : ""}
+                            {SCORE_OPTIONS.map((v) => (
+                              <option key={v} value={v} className={v < 75 && v > 0 ? "text-red-500" : "text-gray-700"}>
+                                {v}
                               </option>
                             ))}
                           </select>
                         </td>
                         <td className="py-3 px-3 text-center">
-                          <span className={`inline-flex w-8 h-8 items-center justify-center rounded-full text-xs font-bold ${
-                            score.knowledgeScore >= 88 ? "bg-green-50 text-green-600" :
-                            score.knowledgeScore >= 75 ? "bg-blue-50 text-blue-600" :
-                            score.knowledgeScore > 0 ? "bg-red-50 text-red-600 border border-red-100" :
-                            "bg-gray-100 text-gray-500"
-                          }`}>
+                          <select
+                            value={score.skillsScore}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setScores((prev) =>
+                                prev.map((s, i) => (i === idx ? { ...s, skillsScore: val } : s))
+                              );
+                            }}
+                            className={`w-20 h-9 px-1.5 border rounded-lg text-sm text-center bg-white outline-none transition-all font-medium ${
+                              score.skillsScore > 0 && score.skillsScore < 75
+                                ? "border-red-300 text-red-600 bg-red-50/30 focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                                : "border-gray-200 text-gray-700 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            }`}
+                          >
+                            {SCORE_OPTIONS.map((v) => (
+                              <option key={v} value={v} className={v < 75 && v > 0 ? "text-red-500" : "text-gray-700"}>
+                                {v}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`inline-flex w-8 h-8 items-center justify-center rounded-full text-xs font-bold ${
+                              score.knowledgeScore >= 88
+                                ? "bg-green-50 text-green-600"
+                                : score.knowledgeScore >= 75
+                                ? "bg-blue-50 text-blue-600"
+                                : score.knowledgeScore > 0
+                                ? "bg-red-50 text-red-600 border border-red-100"
+                                : "bg-gray-100 text-gray-500"
+                            }`}
+                          >
                             {score.knowledgeScore > 0 ? getGrade(score.knowledgeScore) : "-"}
                           </span>
                         </td>
                         <td className="py-3 px-3">
                           <input
                             type="text"
-                            value={score.description}
+                            value={score.notes}
                             onChange={(e) => {
-                              setScores(prev => prev.map((s, i) =>
-                                i === idx ? { ...s, description: e.target.value } : s
-                              ));
+                              setScores((prev) =>
+                                prev.map((s, i) => (i === idx ? { ...s, notes: e.target.value } : s))
+                              );
                             }}
                             placeholder="Deskripsi kompetensi..."
                             className="w-full h-9 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
@@ -369,105 +590,346 @@ export default function SemesterRecordsPage() {
                   </tbody>
                 </table>
               </div>
-            </TabsContent>
 
-            {/* Kehadiran Tab */}
-            <TabsContent value="kehadiran">
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-400">
+                  {scores.filter((s) => s.knowledgeScore > 0).length} mata pelajaran terisi
+                </p>
+                <div className="flex gap-3">
+                  <Link
+                    href={`/students/${params.id}`}
+                    className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Batalkan
+                  </Link>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {saving ? "Menyimpan..." : "Simpan Nilai & Kehadiran"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </TabsContent>
+
+          {/* ── Tab: Kehadiran ────────────────────────────────── */}
+          <TabsContent value="kehadiran">
+            <form onSubmit={saveAll}>
               <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <h3 className="text-sm font-semibold text-gray-900 mb-4">Rekap Kehadiran</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Sakit (hari)</label>
-                    <select
-                      value={attendance.sick}
-                      onChange={(e) => setAttendance(prev => ({ ...prev, sick: Number(e.target.value) }))}
-                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                  {(["sick", "permission", "absent"] as const).map((field) => {
+                    const labels = { sick: "Sakit (hari)", permission: "Izin (hari)", absent: "Alpha (hari)" };
+                    return (
+                      <div key={field}>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                          {labels[field]}
+                        </label>
+                        <select
+                          value={attendance[field]}
+                          onChange={(e) =>
+                            setAttendance((prev) => ({ ...prev, [field]: Number(e.target.value) }))
+                          }
+                          className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                        >
+                          {Array.from({ length: 31 }, (_, i) => (
+                            <option key={i} value={i}>{i}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-end mt-4">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {saving ? "Menyimpan..." : "Simpan Nilai & Kehadiran"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </TabsContent>
+
+          {/* ── Tab: Prestasi ─────────────────────────────────── */}
+          <TabsContent value="prestasi">
+            <div className="space-y-4">
+              {/* Daftar prestasi */}
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-amber-500" />
+                    <h3 className="text-sm font-semibold text-gray-900">Daftar Prestasi</h3>
+                    <span className="px-2 py-0.5 text-[10px] bg-gray-100 text-gray-500 rounded-full font-medium">
+                      {achievements.length} prestasi
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      resetAchievementForm();
+                      setShowAchievementForm(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Tambah Prestasi
+                  </button>
+                </div>
+
+                {achievements.length === 0 ? (
+                  <div className="py-10 text-center">
+                    <Trophy className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Belum ada data prestasi</p>
+                    <p className="text-xs text-gray-300 mt-0.5">Klik tombol Tambah Prestasi untuk menambahkan</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {achievements.map((a) => (
+                      <div key={a.id} className="flex items-start justify-between p-4 hover:bg-gray-50/50 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <span
+                            className={`mt-0.5 px-2 py-0.5 text-[10px] font-semibold rounded-full shrink-0 ${
+                              a.type === "Akademik"
+                                ? "bg-blue-50 text-blue-600"
+                                : "bg-purple-50 text-purple-600"
+                            }`}
+                          >
+                            {a.type}
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{a.title}</p>
+                            {a.description && (
+                              <p className="text-xs text-gray-500 mt-0.5">{a.description}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0 ml-4">
+                          <button
+                            onClick={() => startEditAchievement(a)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteAchievement(a.id)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Form tambah/edit prestasi */}
+              {showAchievementForm && (
+                <div className="bg-white rounded-xl border border-amber-100 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-semibold text-gray-900">
+                      {editingAchievement ? "Edit Prestasi" : "Tambah Prestasi Baru"}
+                    </h4>
+                    <button
+                      onClick={resetAchievementForm}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"
                     >
-                      {Array.from({ length: 31 }, (_, i) => (
-                        <option key={i} value={i}>{i}</option>
-                      ))}
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <form onSubmit={saveAchievement} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Judul Prestasi</label>
+                      <input
+                        type="text"
+                        value={achievementForm.title}
+                        onChange={(e) => setAchievementForm((f) => ({ ...f, title: e.target.value }))}
+                        placeholder="Contoh: Juara 1 Olimpiade Matematika"
+                        required
+                        className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all placeholder:text-gray-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Jenis Prestasi</label>
+                      <select
+                        value={achievementForm.type}
+                        onChange={(e) => setAchievementForm((f) => ({ ...f, type: e.target.value }))}
+                        className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
+                      >
+                        <option value="Akademik">Akademik</option>
+                        <option value="Non-Akademik">Non-Akademik</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Deskripsi (Opsional)</label>
+                      <textarea
+                        value={achievementForm.description}
+                        onChange={(e) => setAchievementForm((f) => ({ ...f, description: e.target.value }))}
+                        placeholder="Deskripsi singkat mengenai prestasi ini..."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all resize-none placeholder:text-gray-300"
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={savingAchievement}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
+                      >
+                        {savingAchievement ? (
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                        ) : null}
+                        {editingAchievement ? "Simpan Perubahan" : "Tambahkan"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetAchievementForm}
+                        className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* ── Tab: Kesehatan ────────────────────────────────── */}
+          <TabsContent value="kesehatan">
+            <form onSubmit={saveHealth}>
+              <div className="bg-white rounded-xl border border-gray-100 p-5">
+                <div className="flex items-center gap-2 mb-5">
+                  <Heart className="w-4 h-4 text-rose-500" />
+                  <h3 className="text-sm font-semibold text-gray-900">Data Kesehatan Siswa</h3>
+                  {healthRecord && (
+                    <span className="px-2 py-0.5 text-[10px] bg-green-50 text-green-600 rounded-full font-semibold border border-green-100">
+                      Sudah diisi
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Tinggi Badan (cm)
+                    </label>
+                    <input
+                      type="number"
+                      value={healthForm.height}
+                      onChange={(e) => setHealthForm((f) => ({ ...f, height: e.target.value }))}
+                      placeholder="Contoh: 135"
+                      min={0}
+                      max={250}
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all placeholder:text-gray-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Berat Badan (kg)
+                    </label>
+                    <input
+                      type="number"
+                      value={healthForm.weight}
+                      onChange={(e) => setHealthForm((f) => ({ ...f, weight: e.target.value }))}
+                      placeholder="Contoh: 35"
+                      min={0}
+                      max={300}
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all placeholder:text-gray-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Kondisi Pendengaran
+                    </label>
+                    <select
+                      value={healthForm.hearingCondition}
+                      onChange={(e) => setHealthForm((f) => ({ ...f, hearingCondition: e.target.value }))}
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all"
+                    >
+                      <option value="">Pilih kondisi...</option>
+                      <option value="Normal">Normal</option>
+                      <option value="Gangguan Ringan">Gangguan Ringan</option>
+                      <option value="Gangguan Sedang">Gangguan Sedang</option>
+                      <option value="Gangguan Berat">Gangguan Berat</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Izin (hari)</label>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Kondisi Penglihatan
+                    </label>
                     <select
-                      value={attendance.permission}
-                      onChange={(e) => setAttendance(prev => ({ ...prev, permission: Number(e.target.value) }))}
-                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                      value={healthForm.visionCondition}
+                      onChange={(e) => setHealthForm((f) => ({ ...f, visionCondition: e.target.value }))}
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all"
                     >
-                      {Array.from({ length: 31 }, (_, i) => (
-                        <option key={i} value={i}>{i}</option>
-                      ))}
+                      <option value="">Pilih kondisi...</option>
+                      <option value="Normal">Normal</option>
+                      <option value="Rabun Jauh (Miopi)">Rabun Jauh (Miopi)</option>
+                      <option value="Rabun Dekat (Hipermetropi)">Rabun Dekat (Hipermetropi)</option>
+                      <option value="Silinder (Astigmatisme)">Silinder (Astigmatisme)</option>
+                      <option value="Gangguan Lainnya">Gangguan Lainnya</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Alpha (hari)</label>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Kondisi Gigi
+                    </label>
                     <select
-                      value={attendance.absent}
-                      onChange={(e) => setAttendance(prev => ({ ...prev, absent: Number(e.target.value) }))}
-                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                      value={healthForm.teethCondition}
+                      onChange={(e) => setHealthForm((f) => ({ ...f, teethCondition: e.target.value }))}
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all"
                     >
-                      {Array.from({ length: 31 }, (_, i) => (
-                        <option key={i} value={i}>{i}</option>
-                      ))}
+                      <option value="">Pilih kondisi...</option>
+                      <option value="Normal / Sehat">Normal / Sehat</option>
+                      <option value="Karies Ringan">Karies Ringan</option>
+                      <option value="Karies Sedang">Karies Sedang</option>
+                      <option value="Karies Berat">Karies Berat</option>
+                      <option value="Perlu Perawatan">Perlu Perawatan</option>
                     </select>
                   </div>
                 </div>
-              </div>
-            </TabsContent>
 
-            {/* Prestasi Tab */}
-            <TabsContent value="prestasi">
-              <div className="bg-white rounded-xl border border-gray-100 p-5 text-center">
-                <Trophy className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">Fitur input prestasi akan segera tersedia.</p>
+                <div className="flex justify-end mt-5 pt-4 border-t border-gray-100">
+                  <button
+                    type="submit"
+                    disabled={savingHealth}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-500 text-white rounded-lg text-sm font-medium hover:bg-rose-600 transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {savingHealth ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {savingHealth ? "Menyimpan..." : "Simpan Data Kesehatan"}
+                  </button>
+                </div>
               </div>
-            </TabsContent>
+            </form>
+          </TabsContent>
 
-            {/* Kesehatan Tab */}
-            <TabsContent value="kesehatan">
-              <div className="bg-white rounded-xl border border-gray-100 p-5 text-center">
-                <Heart className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">Fitur input data kesehatan akan segera tersedia.</p>
-              </div>
-            </TabsContent>
-
-            {/* Catatan Tab */}
-            <TabsContent value="catatan">
-              <div className="bg-white rounded-xl border border-gray-100 p-5 text-center">
-                <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">Fitur catatan guru akan segera tersedia.</p>
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          {/* Footer Actions */}
-          <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
-            <p className="text-xs text-gray-400">
-              {scores.filter(s => s.knowledgeScore > 0).length} mata pelajaran terisi
-            </p>
-            <div className="flex gap-3">
-              <Link
-                href={`/students/${params.id}`}
-                className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                Batalkan
-              </Link>
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
-              >
-                {saving ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                Simpan Perubahan
-              </button>
+          {/* ── Tab: Catatan ──────────────────────────────────── */}
+          <TabsContent value="catatan">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 text-center">
+              <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">Fitur catatan guru akan segera tersedia.</p>
             </div>
-          </div>
-        </form>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

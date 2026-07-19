@@ -4,26 +4,34 @@ import { useEffect, useState } from "react";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { api } from "@/lib/api";
 import type { ClassItem, User as UserType } from "@/types";
-import { BookOpen, Users, ShieldCheck, GraduationCap } from "lucide-react";
+import { BookOpen, Users, ShieldCheck, GraduationCap, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [users, setUsers] = useState<UserType[]>([]);
+  const [teachers, setTeachers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   function refresh() {
     setLoading(true);
     setError(null);
     Promise.all([
       api.handleResponse(api.get<ClassItem[]>("/classes")),
-      api.handleResponse(api.get<UserType[]>("/auth/users")),
+      // Fix: was /auth/users (non-existent) — correct endpoint is /users
+      api.handleResponse(api.get<UserType[]>("/users")),
+      // Gunakan /auth/me untuk mendapat role user saat ini (bukan decode JWT manual)
+      api.get<{ id: string; username: string; name: string; role: string; isActive: boolean }>("/auth/me"),
     ])
-      .then(([classesData, usersData]) => {
+      .then(([classesData, usersData, meRes]) => {
         setClasses(classesData);
-        const guru = usersData.filter((u) => u.role === "GURU");
-        setUsers(guru);
+        // Filter hanya GURU untuk opsi wali kelas
+        const guruOnly = usersData.filter((u) => u.role === "GURU");
+        setTeachers(guruOnly);
+        if (meRes.success && meRes.data) {
+          setCurrentUserRole(meRes.data.role);
+        }
       })
       .catch((err) => {
         setError(err.message || "Gagal memuat data kelas");
@@ -33,28 +41,24 @@ export default function ClassesPage() {
 
   useEffect(() => {
     refresh();
-
-    // Decode token to find current user role
-    const token = localStorage.getItem("accessToken");
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        setUserRole(payload.role);
-      } catch {}
-    }
   }, []);
 
   async function assignTeacher(classId: string, teacherId: string) {
     try {
-      await api.patch(`/classes/${classId}/homeroom-teacher`, { teacherId });
+      await api.handleResponse(
+        api.patch(`/classes/${classId}/homeroom-teacher`, { teacherId })
+      );
+      toast.success("Wali kelas berhasil diperbarui");
+      // Refresh daftar kelas agar data ter-update
       const data = await api.handleResponse(api.get<ClassItem[]>("/classes"));
       setClasses(data);
     } catch (err: any) {
-      // silent catch — UI tetap konsisten
+      toast.error(err.message || "Gagal memperbarui wali kelas");
     }
   }
 
-  const isAdm = userRole === "ADMINISTRATOR" || userRole === "OPERATOR_SEKOLAH";
+  const isAdm =
+    currentUserRole === "ADMINISTRATOR" || currentUserRole === "OPERATOR_SEKOLAH";
 
   if (loading) {
     return (
@@ -67,6 +71,7 @@ export default function ClassesPage() {
   if (error) {
     return (
       <div className="text-center py-12 text-red-500">
+        <AlertCircle className="w-8 h-8 mx-auto mb-2" />
         <p>{error}</p>
         <button
           onClick={refresh}
@@ -118,7 +123,7 @@ export default function ClassesPage() {
             </div>
             <div>
               <p className="text-[11px] text-gray-400 uppercase tracking-wider font-semibold">Total Guru Wali Kelas</p>
-              <p className="text-xl font-bold text-gray-900">{users.length}</p>
+              <p className="text-xl font-bold text-gray-900">{teachers.length}</p>
             </div>
           </div>
         </div>
@@ -136,11 +141,11 @@ export default function ClassesPage() {
             </thead>
             <tbody>
               {classes.map((cls) => {
-                const assignedTeacher = users.find((u) => u.id === cls.homeroomTeacherId);
+                const assignedTeacher = teachers.find((u) => u.id === cls.homeroomTeacherId);
                 return (
                   <tr key={cls.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                     <td className="py-3 px-4 text-sm font-semibold text-gray-950">{cls.name}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500 hidden sm:table-cell">{cls.academicYear?.year}</td>
+                    <td className="py-3 px-4 text-sm text-gray-500 hidden sm:table-cell">{cls.academicYear?.year ?? "-"}</td>
                     <td className="py-3 px-4 text-sm text-gray-600 font-medium">{cls._count?.students || 0} siswa</td>
                     <td className="py-3 px-4">
                       {isAdm ? (
@@ -150,13 +155,17 @@ export default function ClassesPage() {
                           onChange={(e) => assignTeacher(cls.id, e.target.value)}
                         >
                           <option value="">- Belum Ditugaskan -</option>
-                          {users.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
+                          {teachers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name}
+                            </option>
                           ))}
                         </select>
                       ) : (
                         <span className="text-sm text-gray-700">
-                          {assignedTeacher ? assignedTeacher.name : "-"}
+                          {assignedTeacher
+                            ? assignedTeacher.name
+                            : cls.homeroomTeacher?.name || "-"}
                         </span>
                       )}
                     </td>
@@ -174,12 +183,13 @@ export default function ClassesPage() {
           </table>
         </div>
 
-        {/* Info Box */}
+        {/* Info Box — untuk non-admin */}
         {!isAdm && (
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
             <ShieldCheck className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
             <p className="text-xs text-blue-700 leading-relaxed">
-              Anda masuk dengan hak akses peninjau/wali kelas. Perubahan guru wali kelas hanya dapat dilakukan oleh **Administrator** atau **Operator Sekolah**.
+              Anda masuk dengan hak akses peninjau/wali kelas. Perubahan guru wali kelas hanya dapat dilakukan oleh{" "}
+              <strong>Administrator</strong> atau <strong>Operator Sekolah</strong>.
             </p>
           </div>
         )}

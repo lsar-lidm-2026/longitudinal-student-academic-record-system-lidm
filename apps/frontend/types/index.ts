@@ -51,7 +51,7 @@ export interface Student {
   nis: string;
   nisn: string;
   name: string;
-  gender: string;
+  gender: "L" | "P";
   classId: string;
   photoUrl?: string | null;
   class?: { id: string; name: string };
@@ -61,13 +61,14 @@ export interface SemesterRecord {
   id: string;
   studentId: string;
   academicYearId: string;
-  semester: number;
+  semester: 1 | 2;
   createdById: string;
   academicYear?: { year: string };
   subjectScores: SubjectScore[];
   attendance: Attendance | null;
   achievements: Achievement[];
   healthRecord: HealthRecord | null;
+  aiSummaries?: AiSummary[];
 }
 
 export interface SubjectScore {
@@ -91,6 +92,7 @@ export interface Achievement {
   id: string;
   semesterRecordId: string;
   title: string;
+  /** Akademik | Non-Akademik */
   type: string;
   description: string | null;
   attachmentUrl?: string | null;
@@ -130,12 +132,26 @@ export interface DashboardSummary {
   totalClasses?: number;
   activeYear: string | null;
   pendingAiDrafts?: number;
-  managedClasses?: ClassItem[];
+  managedClasses?: Array<{
+    id: string;
+    name: string;
+    _count?: { students: number };
+  }>;
 }
 
 export interface StudentProfile {
   student: Student & { class: { id: string; name: string } };
   semesterRecords: SemesterRecord[];
+}
+
+/** Paginated list response (used for /students) */
+export interface PaginatedStudents {
+  students: Student[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+  };
 }
 
 // ── Chatbot Types ─────────────────────────────────────────────────────

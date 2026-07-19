@@ -26,18 +26,27 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [form, setForm] = useState({ username: "", password: "", name: "", role: "GURU" as Role });
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    username: "",
+    password: "",
+    name: "",
+    role: "GURU" as Role,
+  });
 
   function load() {
     setLoading(true);
     setError(null);
-    api.handleResponse(api.get<User[]>("/users"))
+    api
+      .handleResponse(api.get<User[]>("/users"))
       .then(setUsers)
       .catch((err) => setError(err.message || "Gagal memuat data pengguna"))
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   function resetForm() {
     setShowForm(false);
@@ -53,44 +62,46 @@ export default function UsersPage() {
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    setSaving(true);
 
     try {
       if (editingUser) {
-        const res = await api.put(`/users/${editingUser.id}`, {
-          name: form.name,
-          role: form.role,
-        });
-        if (res.success) {
-          toast.success("User berhasil diperbarui");
-          resetForm();
-          load();
-        } else {
-          toast.error(res.error?.message || "Gagal memperbarui user");
-        }
+        // Update: hanya kirim name dan role (backend: PUT /users/:id)
+        await api.handleResponse(
+          api.put(`/users/${editingUser.id}`, {
+            name: form.name,
+            role: form.role,
+          })
+        );
+        toast.success("User berhasil diperbarui");
+        resetForm();
+        load();
       } else {
-        const res = await api.post("/auth/users", form);
-        if (res.success) {
-          toast.success("User berhasil dibuat");
-          resetForm();
-          load();
-        } else {
-          toast.error(res.error?.message || "Gagal membuat user");
-        }
+        // Create: Fix — sebelumnya POST /auth/users (salah), sekarang POST /users
+        await api.handleResponse(
+          api.post("/users", {
+            username: form.username,
+            password: form.password,
+            name: form.name,
+            role: form.role,
+          })
+        );
+        toast.success("User berhasil dibuat");
+        resetForm();
+        load();
       }
     } catch (err: any) {
       toast.error(err.message || "Gagal menyimpan user");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function toggleStatus(userId: string) {
     try {
-      const res = await api.patch(`/users/${userId}/status`);
-      if (res.success) {
-        toast.success("Status user berhasil diubah");
-        load();
-      } else {
-        toast.error(res.error?.message || "Gagal mengubah status");
-      }
+      await api.handleResponse(api.patch(`/users/${userId}/status`));
+      toast.success("Status user berhasil diubah");
+      load();
     } catch (err: any) {
       toast.error(err.message || "Gagal mengubah status");
     }
@@ -120,139 +131,164 @@ export default function UsersPage() {
 
   return (
     <AuthGuard roles={["ADMINISTRATOR"]}>
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="relative">
-        <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
-        <div className="relative p-6 bg-gradient-to-br from-white via-purple-50/30 rounded-2xl border border-purple-100/50">
-          <div className="flex items-center justify-between">
-            <div>
-              <AnimatedShinyText className="text-2xl font-bold text-gray-900">
-                Pengguna
-              </AnimatedShinyText>
-              <p className="text-sm text-muted-foreground mt-1">
-                {users.length} pengguna terdaftar
-              </p>
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div className="relative">
+          <BorderBeam className="absolute inset-0 rounded-2xl" duration={10} />
+          <div className="relative p-6 bg-gradient-to-br from-white via-purple-50/30 rounded-2xl border border-purple-100/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <AnimatedShinyText className="text-2xl font-bold text-gray-900">
+                  Pengguna
+                </AnimatedShinyText>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {users.length} pengguna terdaftar
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  resetForm();
+                  setShowForm(!showForm);
+                }}
+              >
+                {showForm ? "Batal" : "Tambah User"}
+              </Button>
             </div>
-            <Button onClick={() => { resetForm(); setShowForm(!showForm); }}>
-              {showForm ? "Batal" : "Tambah User"}
-            </Button>
           </div>
         </div>
-      </div>
 
-      {showForm && (
-        <MagicCard className="p-6" gradientSize={200}>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">
-            {editingUser ? "Edit User" : "Tambah User Baru"}
-          </h3>
-          <Separator className="mb-4" />
-          <form onSubmit={save} className="space-y-4">
-            {!editingUser && (
+        {showForm && (
+          <MagicCard className="p-6" gradientSize={200}>
+            <h3 className="text-base font-semibold text-gray-900 mb-4">
+              {editingUser ? "Edit User" : "Tambah User Baru"}
+            </h3>
+            <Separator className="mb-4" />
+            <form onSubmit={save} className="space-y-4">
+              {!editingUser && (
+                <Input
+                  label="Username"
+                  value={form.username}
+                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                  required
+                  disabled={saving}
+                />
+              )}
+              {editingUser && (
+                <div className="p-3 bg-gray-50/50 rounded-lg text-sm">
+                  <span className="text-muted-foreground">Username: </span>
+                  <span className="font-medium text-gray-900">{form.username}</span>
+                </div>
+              )}
               <Input
-                label="Username"
-                value={form.username}
-                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                label="Nama Lengkap"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 required
+                disabled={saving}
               />
-            )}
-            {editingUser && (
-              <div className="p-3 bg-gray-50/50 rounded-lg text-sm">
-                <span className="text-muted-foreground">Username: </span>
-                <span className="font-medium text-gray-900">{form.username}</span>
+              {!editingUser && (
+                <Input
+                  label="Password"
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  required
+                  minLength={6}
+                  disabled={saving}
+                />
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white hover:border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
+                  value={form.role}
+                  onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))}
+                  disabled={saving}
+                >
+                  <option value="GURU">Guru</option>
+                  <option value="OPERATOR_SEKOLAH">Operator Sekolah</option>
+                  <option value="ADMINISTRATOR">Administrator</option>
+                  <option value="KEPALA_SEKOLAH">Kepala Sekolah</option>
+                </select>
               </div>
-            )}
-            <Input
-              label="Nama Lengkap"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              required
-            />
-            {!editingUser && (
-              <Input
-                label="Password"
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                required
-                minLength={6}
-              />
-            )}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-              <select
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white hover:border-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
-                value={form.role}
-                onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))}
-              >
-                <option value="GURU">Guru</option>
-                <option value="OPERATOR_SEKOLAH">Operator Sekolah</option>
-                <option value="ADMINISTRATOR">Administrator</option>
-                <option value="KEPALA_SEKOLAH">Kepala Sekolah</option>
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <Button type="submit">{editingUser ? "Simpan Perubahan" : "Simpan"}</Button>
-              <Button type="button" variant="secondary" onClick={resetForm}>Batal</Button>
-            </div>
-          </form>
-        </MagicCard>
-      )}
+              <div className="flex gap-2">
+                <Button type="submit" disabled={saving}>
+                  {saving ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                      Menyimpan...
+                    </span>
+                  ) : editingUser ? (
+                    "Simpan Perubahan"
+                  ) : (
+                    "Simpan"
+                  )}
+                </Button>
+                <Button type="button" variant="secondary" onClick={resetForm} disabled={saving}>
+                  Batal
+                </Button>
+              </div>
+            </form>
+          </MagicCard>
+        )}
 
-      <MagicCard className="p-0 overflow-hidden" gradientSize={300}>
-        <div className="p-4 pb-0">
-          <h3 className="text-sm font-medium text-muted-foreground">Daftar Pengguna</h3>
-        </div>
-        <Separator className="mt-3" />
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50/50">
-              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Username</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Nama</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Role</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-              <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className="border-b border-gray-50 hover:bg-purple-50/30 transition-colors">
-                <td className="py-3 px-4 text-sm text-gray-900">{user.username}</td>
-                <td className="py-3 px-4 text-sm text-gray-900">{user.name}</td>
-                <td className="py-3 px-4">
-                  <Badge variant={roleConfig[user.role].variant}>
-                    {roleConfig[user.role].label}
-                  </Badge>
-                </td>
-                <td className="py-3 px-4">
-                  <Badge variant={user.isActive ? "success" : "danger"}>
-                    {user.isActive ? "Aktif" : "Nonaktif"}
-                  </Badge>
-                </td>
-                <td className="py-3 px-4">
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => startEdit(user)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleStatus(user.id)}
-                      className={user.isActive ? "text-red-600" : "text-green-600"}
-                    >
-                      {user.isActive ? "Nonaktifkan" : "Aktifkan"}
-                    </Button>
-                  </div>
-                </td>
+        <MagicCard className="p-0 overflow-hidden" gradientSize={300}>
+          <div className="p-4 pb-0">
+            <h3 className="text-sm font-medium text-muted-foreground">Daftar Pengguna</h3>
+          </div>
+          <Separator className="mt-3" />
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50/50">
+                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Username</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Nama</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Role</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Aksi</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </MagicCard>
-    </div>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id} className="border-b border-gray-50 hover:bg-purple-50/30 transition-colors">
+                  <td className="py-3 px-4 text-sm text-gray-900">{user.username}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900">{user.name}</td>
+                  <td className="py-3 px-4">
+                    <Badge variant={roleConfig[user.role].variant}>
+                      {roleConfig[user.role].label}
+                    </Badge>
+                  </td>
+                  <td className="py-3 px-4">
+                    <Badge variant={user.isActive ? "success" : "danger"}>
+                      {user.isActive ? "Aktif" : "Nonaktif"}
+                    </Badge>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(user)}>
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleStatus(user.id)}
+                        className={user.isActive ? "text-red-600" : "text-green-600"}
+                      >
+                        {user.isActive ? "Nonaktifkan" : "Aktifkan"}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {users.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
+                    Belum ada pengguna terdaftar.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </MagicCard>
+      </div>
     </AuthGuard>
   );
 }

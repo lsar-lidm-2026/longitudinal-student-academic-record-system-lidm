@@ -9,61 +9,86 @@ import {
   ArrowRightLeft,
   Search,
   SlidersHorizontal,
-  Download,
   Plus,
-  MoreVertical,
   ChevronLeft,
   ChevronRight,
   User,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Student } from "@/types";
+import type { Student, ClassItem } from "@/types";
+
+const PAGE_SIZE = 10;
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
 
-  function refresh() {
+  // Filter / search state
+  const [search, setSearch] = useState("");
+  const [classId, setClassId] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  // Debounced search
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset page on filter change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, classId]);
+
+  // Fetch classes for dropdown (once)
+  useEffect(() => {
+    api.handleResponse(api.get<ClassItem[]>("/classes"))
+      .then(setClasses)
+      .catch(() => {}); // non-critical, dropdown just stays empty
+  }, []);
+
+  // Main data fetch — server-side search, filter, pagination
+  function fetchStudents(p = page, q = debouncedSearch, cid = classId) {
     setLoading(true);
     setError(null);
-    api.handleResponse(api.get<Student[]>("/students"))
-      .then((data) => setStudents(data))
-      .catch((err) => setError(err.message || "Gagal memuat data siswa"))
+
+    const params = new URLSearchParams();
+    params.set("page", String(p));
+    params.set("limit", String(PAGE_SIZE));
+    if (q) params.set("search", q);
+    if (cid) params.set("classId", cid);
+
+    api
+      .get<Student[]>(`/students?${params.toString()}`)
+      .then((res) => {
+        if (res.success && res.data) {
+          setStudents(res.data);
+          setTotal(res.meta?.total ?? res.data.length);
+        } else {
+          setError(res.error?.message || "Gagal memuat data siswa");
+        }
+      })
+      .catch(() => setError("Gagal memuat data siswa"))
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    fetchStudents(page, debouncedSearch, classId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, debouncedSearch, classId]);
 
-  const filtered = students.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.nisn.includes(search) ||
-    s.nis.includes(search)
-  );
-
-  const totalPages = Math.ceil(filtered.length / pageSize);
-  const paginatedStudents = filtered.slice((page - 1) * pageSize, page * pageSize);
-
-  // Reset page on search
-  useEffect(() => { setPage(1); }, [search]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
-      </div>
-    );
-  }
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   if (error) {
     return (
       <div className="text-center py-12 text-red-500">
         <p>{error}</p>
         <button
-          onClick={refresh}
+          onClick={() => fetchStudents()}
           className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
         >
           Coba Lagi
@@ -71,8 +96,6 @@ export default function StudentsPage() {
       </div>
     );
   }
-
-  const totalStudents = students.length;
 
   return (
     <div className="space-y-6">
@@ -85,10 +108,6 @@ export default function StudentsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-2 px-3.5 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-            <Download className="w-4 h-4" />
-            Ekspor Data
-          </button>
           <button className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
             <Plus className="w-4 h-4" />
             Tambah Siswa
@@ -98,8 +117,8 @@ export default function StudentsPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MiniStat icon={Users} label="Total Siswa" value={totalStudents} iconBg="bg-blue-50" iconColor="text-blue-500" />
-        <MiniStat icon={CheckCircle} label="Siswa Aktif" value={totalStudents} iconBg="bg-green-50" iconColor="text-green-500" />
+        <MiniStat icon={Users} label="Total Siswa" value={total} iconBg="bg-blue-50" iconColor="text-blue-500" />
+        <MiniStat icon={CheckCircle} label="Siswa Aktif" value={total} iconBg="bg-green-50" iconColor="text-green-500" />
         <MiniStat icon={Clock} label="Siswa Cuti" value={0} iconBg="bg-amber-50" iconColor="text-amber-500" />
         <MiniStat icon={ArrowRightLeft} label="Siswa Pindah" value={0} iconBg="bg-gray-50" iconColor="text-gray-500" />
       </div>
@@ -110,17 +129,31 @@ export default function StudentsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Cari berdasarkan Nama atau NISN..."
+            placeholder="Cari berdasarkan Nama, NIS, atau NISN..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 h-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-400"
+            className="w-full pl-10 pr-9 h-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-400"
           />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <select className="h-10 px-3 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white outline-none focus:border-blue-400">
-          <option>Semua Kelas</option>
-        </select>
-        <select className="h-10 px-3 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white outline-none focus:border-blue-400">
-          <option>Semua Status</option>
+        <select
+          className="h-10 px-3 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white outline-none focus:border-blue-400 transition-colors"
+          value={classId}
+          onChange={(e) => setClassId(e.target.value)}
+        >
+          <option value="">Semua Kelas</option>
+          {classes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} {c.academicYear?.year ? `(${c.academicYear.year})` : ""}
+            </option>
+          ))}
         </select>
         <button className="h-10 px-3 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 transition-colors flex items-center gap-1.5">
           <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -143,52 +176,64 @@ export default function StudentsPage() {
             </tr>
           </thead>
           <tbody>
-            {paginatedStudents.map((student, idx) => (
-              <tr key={student.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
-                <td className="py-3 px-4 text-sm text-gray-400">
-                  {(page - 1) * pageSize + idx + 1}
-                </td>
-                <td className="py-3 px-4">
-                  <Link href={`/students/${student.id}`} className="flex items-center gap-3 group">
-                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
-                        {student.name}
-                      </p>
-                    </div>
-                  </Link>
-                </td>
-                <td className="py-3 px-4 hidden md:table-cell">
-                  <span className="text-sm text-gray-500 font-mono">{student.nisn}</span>
-                </td>
-                <td className="py-3 px-4 hidden lg:table-cell">
-                  <span className="text-sm text-gray-600">{student.class?.name || "-"}</span>
-                </td>
-                <td className="py-3 px-4 hidden xl:table-cell">
-                  <span className="text-sm text-gray-500">{student.nis}</span>
-                </td>
-                <td className="py-3 px-4 hidden sm:table-cell">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-50 text-green-600 border border-green-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                    Aktif
-                  </span>
-                </td>
-                <td className="py-3 px-4 text-center">
-                  <Link
-                    href={`/students/${student.id}`}
-                    className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </Link>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
+            {loading
+              ? Array.from({ length: PAGE_SIZE }).map((_, i) => (
+                  <tr key={i} className="border-b border-gray-50">
+                    <td colSpan={7} className="py-3 px-4">
+                      <div className="h-4 bg-gray-100 rounded animate-pulse w-full" />
+                    </td>
+                  </tr>
+                ))
+              : students.map((student, idx) => (
+                  <tr key={student.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                    <td className="py-3 px-4 text-sm text-gray-400">
+                      {(page - 1) * PAGE_SIZE + idx + 1}
+                    </td>
+                    <td className="py-3 px-4">
+                      <Link href={`/students/${student.id}`} className="flex items-center gap-3 group">
+                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                          {student.photoUrl ? (
+                            <img src={student.photoUrl} alt={student.name} className="w-8 h-8 rounded-full object-cover" />
+                          ) : (
+                            <User className="w-4 h-4 text-gray-400" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+                            {student.name}
+                          </p>
+                        </div>
+                      </Link>
+                    </td>
+                    <td className="py-3 px-4 hidden md:table-cell">
+                      <span className="text-sm text-gray-500 font-mono">{student.nisn}</span>
+                    </td>
+                    <td className="py-3 px-4 hidden lg:table-cell">
+                      <span className="text-sm text-gray-600">{student.class?.name || "-"}</span>
+                    </td>
+                    <td className="py-3 px-4 hidden xl:table-cell">
+                      <span className="text-sm text-gray-500">{student.nis}</span>
+                    </td>
+                    <td className="py-3 px-4 hidden sm:table-cell">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-50 text-green-600 border border-green-100">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                        Aktif
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <Link
+                        href={`/students/${student.id}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        Detail
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+            {!loading && students.length === 0 && (
               <tr>
                 <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
-                  {search ? "Tidak ada siswa dengan nama tersebut" : "Tidak ada data siswa"}
+                  {search || classId ? "Tidak ada siswa yang sesuai filter" : "Tidak ada data siswa"}
                 </td>
               </tr>
             )}
@@ -196,10 +241,14 @@ export default function StudentsPage() {
         </table>
 
         {/* Pagination */}
-        {filtered.length > 0 && (
+        {total > 0 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
             <p className="text-sm text-gray-500">
-              Menampilkan <strong>{(page - 1) * pageSize + 1}-{Math.min(page * pageSize, filtered.length)}</strong> dari {filtered.length} data siswa
+              Menampilkan{" "}
+              <strong>
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}
+              </strong>{" "}
+              dari {total} siswa
             </p>
             <div className="flex items-center gap-1">
               <button
@@ -247,7 +296,7 @@ export default function StudentsPage() {
               )}
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
+                disabled={page === totalPages || totalPages === 0}
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-gray-500"
               >
                 <ChevronRight className="w-4 h-4" />

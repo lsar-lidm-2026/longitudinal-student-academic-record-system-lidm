@@ -40,6 +40,9 @@ export default function SettingsPage() {
   const [profilePhone, setProfilePhone] = useState("");
   const [profileAddress, setProfileAddress] = useState("");
 
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   useEffect(() => {
     checkHealth();
     loadProfile();
@@ -47,9 +50,10 @@ export default function SettingsPage() {
 
   async function loadProfile() {
     try {
-      const res = await api.get<any>("/auth/me");
+      const res = await api.get<{ id: string; username: string; name: string; role: string; isActive: boolean }>("/auth/me");
       if (res.success && res.data) {
         setProfileName(res.data.name || "");
+        setCurrentUserId(res.data.id);
       }
     } catch {}
   }
@@ -61,6 +65,7 @@ export default function SettingsPage() {
       if (res.success && res.data) {
         const data = res.data as any;
         setApiStatus("ok");
+        // Backend: { status, database: { ok, latency }, analytics: { trained, hasClusterModel } }
         setDbStatus(data.database?.ok ? "Terhubung" : "Error");
         setMlStatus(data.analytics?.trained ? "Model siap" : "Belum dilatih");
       } else {
@@ -73,8 +78,23 @@ export default function SettingsPage() {
     }
   }
 
-  function handleSaveProfile() {
-    toast.success("Profil berhasil diperbarui");
+  async function handleSaveProfile() {
+    if (!currentUserId) {
+      toast.error("Gagal mendapatkan ID pengguna");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      // Backend PUT /users/:id menerima { name, role, isActive }
+      await api.handleResponse(
+        api.put(`/users/${currentUserId}`, { name: profileName })
+      );
+      toast.success("Profil berhasil diperbarui");
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memperbarui profil");
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   return (
@@ -228,10 +248,15 @@ export default function SettingsPage() {
                   </button>
                   <button
                     onClick={handleSaveProfile}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                    disabled={savingProfile}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
                   >
-                    <Save className="w-4 h-4" />
-                    Simpan Perubahan
+                    {savingProfile ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {savingProfile ? "Menyimpan..." : "Simpan Perubahan"}
                   </button>
                 </div>
               </div>

@@ -82,13 +82,12 @@ export default function AiAssistantPage() {
 
   async function finalize(summaryId: string) {
     try {
-      const res = await api.put(`/ai-summaries/${summaryId}`, { isFinal: true });
-      if (res.success) {
-        loadSummaries();
-        toast.success("AI summary berhasil difinalkan");
-      } else {
-        toast.error(res.error?.message || "Gagal finalkan");
-      }
+      // Fix: gunakan api.handleResponse() konsisten seperti generate() dan regenerate()
+      await api.handleResponse(api.put<AiSummary>(`/ai-summaries/${summaryId}`, { isFinal: true }));
+      // Update result state jika yang di-finalize adalah yang sedang ditampilkan
+      setResult((prev) => (prev?.id === summaryId ? { ...prev, isFinal: true } : prev));
+      loadSummaries();
+      toast.success("AI summary berhasil difinalkan");
     } catch (err: any) {
       toast.error(err.message || "Gagal finalkan AI summary");
     }
