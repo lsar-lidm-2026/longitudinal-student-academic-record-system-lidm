@@ -181,9 +181,9 @@ export default function ClassesPage() {
       <div className="space-y-6">
         {/* ── Header ────────────────────────────────────────────────── */}
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Buku Induk (Daftar Kelas)</h1>
+          <h1 className="text-xl font-bold text-gray-900">Manajemen Kelas</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Kelola data kelas dan pembagian wali kelas terdaftar untuk rekam akademis siswa.
+            Kelola data kelas dan pembagian wali kelas untuk setiap tahun ajaran aktif.
           </p>
         </div>
 

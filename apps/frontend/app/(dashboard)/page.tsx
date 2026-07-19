@@ -265,8 +265,8 @@ export default function DashboardPage() {
           <QuickAccessCard
             href="/students"
             icon={FileInput}
-            title="Input Nilai Semester"
-            description="Masukkan nilai akademik siswa."
+            title="Data Siswa"
+            description="Kelola biodata dan data siswa."
             primary
           />
           <QuickAccessCard
@@ -284,8 +284,8 @@ export default function DashboardPage() {
           <QuickAccessCard
             href="/classes"
             icon={Printer}
-            title="Cetak Buku Induk"
-            description="Generate laporan resmi."
+            title="Manajemen Kelas"
+            description="Atur data kelas dan rombongan belajar."
           />
         </div>
       </div>

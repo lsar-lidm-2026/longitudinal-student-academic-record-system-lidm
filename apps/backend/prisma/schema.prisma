@@ -97,15 +97,18 @@ model ClassAuditLog {
 }
 
 model Student {
-  id        String   @id @default(uuid())
-  nis       String   @unique // Diisi unik untuk validasi data (FR-04)
-  nisn      String   @unique // Diisi unik untuk validasi data (FR-04)
-  name      String
-  gender    String
-  classId   String   // Wajib untuk middleware penentu hak akses wali kelas
-  photoUrl  String?  // Foto siswa — disimpan di S3 (FR-04 tambahan)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  nis        String   @unique // Diisi unik untuk validasi data (FR-04)
+  nisn       String   @unique // Diisi unik untuk validasi data (FR-04)
+  name       String
+  gender     String   // L / P
+  birthDate  String?  // Tanggal lahir (format: YYYY-MM-DD) — FR-04
+  address    String?  @db.Text // Alamat domisili siswa — FR-04
+  parentName String?  // Nama orang tua/wali — FR-04
+  classId    String   // Wajib untuk middleware penentu hak akses wali kelas
+  photoUrl   String?  // Foto siswa — disimpan di S3 (FR-04 tambahan)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Relasi
   class            Class              @relation(fields: [classId], references: [id])

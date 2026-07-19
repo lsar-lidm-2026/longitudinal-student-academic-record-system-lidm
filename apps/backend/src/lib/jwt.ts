@@ -93,7 +93,7 @@ export function generateRefreshToken(payload: JwtPayload): string {
       iat: Math.floor(Date.now() / 1000),
     },
     env.jwtSecret,
-    // Refresh token selalu 30 hari — tidak pakai konfigurasi
-    { expiresIn: "30d" } as SignOptions
+    // Refresh token — 7 hari (FR-01: refresh token expiry sesuai plan)
+    { expiresIn: "7d" } as SignOptions
   );
 }

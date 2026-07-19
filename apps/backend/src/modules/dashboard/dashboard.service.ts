@@ -43,12 +43,15 @@ export async function getSummary(userId: string, role: Role) {
   // === ADMINISTRATOR / KEPALA_SEKOLAH: akses data seluruh sekolah ===
   if (role === "ADMINISTRATOR" || role === "KEPALA_SEKOLAH") {
     // Eksekusi 4 query secara paralel untuk efisiensi
-    const [totalStudents, totalClasses, activeYear, pendingAiDrafts] = await Promise.all([
+    const [totalStudents, activeYear, pendingAiDrafts] = await Promise.all([
       prisma.student.count(),                                          // Total seluruh siswa
-      prisma.class.count(),                                            // Total seluruh kelas
       prisma.academicYear.findFirst({ where: { isActive: true } }),   // Tahun ajaran aktif
       prisma.aiSummary.count({ where: { isFinal: false } }),           // Draft AI yang belum final
     ]);
+    // Total kelas HANYA dari tahun ajaran aktif — bukan semua tahun
+    const totalClasses = activeYear
+      ? await prisma.class.count({ where: { academicYearId: activeYear.id } })
+      : 0;
 
     logger.info({ userId, role, totalStudents, totalClasses, activeYear: activeYear?.year, pendingAiDrafts }, "Summary fetched for admin/kepsek");
     return {
@@ -93,11 +96,13 @@ export async function getSummary(userId: string, role: Role) {
   }
 
   // === OPERATOR_SEKOLAH: akses data seluruh sekolah (tanpa pendingAiDrafts) ===
-  const [totalStudents, totalClasses, activeYear] = await Promise.all([
+  const [totalStudents, activeYear] = await Promise.all([
     prisma.student.count(),
-    prisma.class.count(),
     prisma.academicYear.findFirst({ where: { isActive: true } }),
   ]);
+  const totalClasses = activeYear
+    ? await prisma.class.count({ where: { academicYearId: activeYear.id } })
+    : 0;
 
   logger.info({ userId, role, totalStudents, totalClasses, activeYear: activeYear?.year }, "Summary fetched for operator");
   return { totalStudents, totalClasses, activeYear: activeYear?.year || null };
@@ -122,10 +127,18 @@ export async function getAdministrativeStatus(userId: string, role: Role) {
   let classIds: string[];
 
   if (role === "ADMINISTRATOR" || role === "KEPALA_SEKOLAH") {
-    // Admin/Kepsek: periksa SEMUA kelas
-    const allClasses = await prisma.class.findMany({ select: { id: true } });
+    // Admin/Kepsek: periksa kelas di tahun ajaran AKTIF saja
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
+    if (!activeYear) {
+      logger.warn("No active academic year found for administrative status");
+      return [];
+    }
+    const allClasses = await prisma.class.findMany({
+      where: { academicYearId: activeYear.id },
+      select: { id: true },
+    });
     classIds = allClasses.map((c) => c.id);
-    logger.debug({ classCount: classIds.length }, "Admin/Kepsek: checking all classes");
+    logger.debug({ classCount: classIds.length, academicYear: activeYear.year }, "Admin/Kepsek: checking active-year classes only");
   } else {
     // GURU: hanya kelas yang diampu
     const managedClasses = await prisma.class.findMany({

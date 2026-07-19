@@ -52,11 +52,52 @@ const ACH_NONAKADEMIK = [
   "Olahraga","Taekwondo","Pencak Silat","Menari","Drama",
 ];
 
+// ── Additional data arrays untuk field baru (FR-04) ──────────────────────────
+const STREET_NAMES = [
+  "Jl. Merdeka", "Jl. Raya", "Jl. Diponegoro", "Jl. Ahmad Yani", "Jl. Sudirman",
+  "Jl. Pattimura", "Jl. Gajah Mada", "Jl. Hayam Wuruk", "Jl. Siliwangi", "Jl. Pahlawan",
+  "Jl. Kartini", "Jl. Imam Bonjol", "Jl. Pemuda", "Jl. Veteran", "Jl. Proklamasi",
+];
+const VILLAGE_NAMES = [
+  "Ciporang", "Cikole", "Cibiru", "Cisaladah", "Cijambe",
+  "Cibeureum", "Cimahi", "Cilimus", "Ciwaringin", "Cikancung",
+  "Ciganitri", "Cilengkrang", "Cisurupan", "Cibodas", "Cikandang",
+];
+const DISTRICT_NAMES = [
+  "Cimahi", "Cicalengka", "Cililin", "Cisalak", "Cisarua",
+  "Cimaung", "Ciparay", "Cikancung", "Cileunyi", "Cimenyan",
+];
+
 // ── PRNG ──────────────────────────────────────────────────────────────────
 let seed = 42;
 function rand() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
 function ri(min: number, max: number) { return Math.floor(rand() * (max - min + 1)) + min; }
 function pick<T>(arr: T[]): T { return arr[Math.floor(rand() * arr.length)]; }
+
+// ── Generators for new Student fields (FR-04) ─────────────────────────────
+/** Generate a random birth date between 2012 and 2020 (inclusive) in YYYY-MM-DD format */
+function genBirthDate(): string {
+  const year = ri(2012, 2020);
+  const month = ri(1, 12);
+  const maxDay = new Date(year, month, 0).getDate(); // days in month
+  const day = ri(1, maxDay);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** Generate a realistic Indonesian village-level address */
+function genAddress(): string {
+  const street = pick(STREET_NAMES);
+  const number = ri(1, 120);
+  const village = pick(VILLAGE_NAMES);
+  const district = pick(DISTRICT_NAMES);
+  return `${street} No. ${number}, ${village}, Kec. ${district}`;
+}
+
+/** Generate a parent name from first name with Bpk./Ibu. prefix */
+function genParentName(gender: string): string {
+  const prefix = gender === "L" ? "Bpk." : "Ibu.";
+  return `${prefix} ${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
+}
 
 // ── Score Generator ───────────────────────────────────────────────────────
 function genScores(profile: string, yi: number, sem: number): number[] {
@@ -278,7 +319,12 @@ async function main() {
         const sId = genUUID();
         studentCounter++;
 
-        studentBatch.push([sId, String(nis), String(nisn), name, gender, clsId]);
+        // Generate optional fields (FR-04)
+        const birthDate = genBirthDate();            // Tanggal lahir antara 2012-2020
+        const address = genAddress();                // Alamat desa/kelurahan di Indonesia
+        const parentName = genParentName(gender);     // Nama orang tua sesuai gender
+
+        studentBatch.push([sId, String(nis), String(nisn), name, gender, clsId, birthDate, address, parentName]);
 
         // Semester records
         for (let yi = startYear; yi < 6; yi++) {
@@ -362,8 +408,8 @@ async function main() {
     }
   }
 
-  // Students
-  await batchChunks("student", ["id","nis","nisn","name","gender","classId"], studentBatch, 50);
+  // Students (including FR-04 fields: birthDate, address, parentName)
+  await batchChunks("student", ["id","nis","nisn","name","gender","classId","birthDate","address","parentName"], studentBatch, 40);
   console.log(`  ✅ ${studentBatch.length} students`);
 
   // Semester records

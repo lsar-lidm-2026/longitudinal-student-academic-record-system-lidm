@@ -71,16 +71,19 @@ export const studentController = new Elysia({ prefix: "/students" })
       logger.info({ studentId: data.id }, "Student created successfully");
       return success(data);
     },
-    {
-      // Request body validation schema: required fields for student creation
-      body: t.Object({
-        nis: t.String(),
-        nisn: t.String(),
-        name: t.String(),
-        gender: t.String(),
-        classId: t.String(),
-      }),
-    }
+      {
+        // Request body validation schema: required + optional fields for student creation
+        body: t.Object({
+          nis: t.String(),
+          nisn: t.String(),
+          name: t.String(),
+          gender: t.String(),
+          classId: t.String(),
+          birthDate: t.Optional(t.String()),   // Format: YYYY-MM-DD — FR-04
+          address: t.Optional(t.String()),     // Alamat domisili — FR-04
+          parentName: t.Optional(t.String()),  // Nama orang tua/wali — FR-04
+        }),
+      }
   )
   // ── POST /students/bulk — Import siswa secara massal ────────────────────
   .post(
@@ -115,6 +118,9 @@ export const studentController = new Elysia({ prefix: "/students" })
             nisn: t.String(),
             gender: t.String(),
             classId: t.String(),
+            birthDate: t.Optional(t.String()),   // Format: YYYY-MM-DD — FR-04
+            address: t.Optional(t.String()),     // Alamat domisili — FR-04
+            parentName: t.Optional(t.String()),  // Nama orang tua/wali — FR-04
           })
         ),
       }),
@@ -144,6 +150,9 @@ export const studentController = new Elysia({ prefix: "/students" })
             name: t.Optional(t.String()),
             gender: t.Optional(t.String()),
             classId: t.Optional(t.String()),
+            birthDate: t.Optional(t.String()),   // Format: YYYY-MM-DD — FR-04
+            address: t.Optional(t.String()),     // Alamat domisili — FR-04
+            parentName: t.Optional(t.String()),  // Nama orang tua/wali — FR-04
           }),
         }
       )
