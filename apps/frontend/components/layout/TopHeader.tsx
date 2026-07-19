@@ -95,7 +95,7 @@ function getPageTitle(pathname: string): string {
   }
   if (pathname === "/students") return "Data Master Siswa";
   if (pathname === "/ml") return "AI Analisis Dashboard";
-  if (pathname === "/classes") return "Buku Induk (Daftar Kelas)";
+    if (pathname === "/classes") return "Manajemen Kelas";
   if (pathname === "/settings") return "Pengaturan Sistem";
   if (pathname === "/users") return "Manajemen Pengguna";
   if (pathname === "/academic-years") return "Manajemen Tahun Ajaran";
