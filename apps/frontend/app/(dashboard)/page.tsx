@@ -50,7 +50,12 @@ import {
   AlertCircle,
   Check,
   Loader2,
+  PlusCircle,
+  MinusCircle,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 import type { DashboardSummary, ActivityItem } from "@/types";
@@ -71,6 +76,10 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   /** Tugas & pengingat yang dibangun dari data summary */
   const [tasks, setTasks] = useState<Array<{ text: string; priority: "high" | "medium" }>>([]);
+  /** ID kelas yang sedang diperluas (expand) — null berarti tidak ada */
+  const [expandedClass, setExpandedClass] = useState<string | null>(null);
+  /** Daftar siswa per kelas — keyed by classId */
+  const [classStudents, setClassStudents] = useState<Record<string, Array<{ id: string; name: string; nis?: string }>>>({});
 
   /**
    * refresh — Fetch data dashboard dari API.
@@ -129,6 +138,27 @@ export default function DashboardPage() {
         setActivities([]);
       })
       .finally(() => setActivitiesLoading(false));
+  }
+
+  /**
+   * toggleClassStudents — Expand/collapse daftar siswa dalam satu kelas.
+   * Jika kelas sudah di-expand, collapse. Jika belum, fetch daftar siswa dari API.
+   * @param classId - ID kelas yang diklik
+   */
+  async function toggleClassStudents(classId: string) {
+    if (expandedClass === classId) {
+      setExpandedClass(null);
+      return;
+    }
+    setExpandedClass(classId);
+    if (!classStudents[classId]) {
+      try {
+        const data = await api.handleResponse(api.get<Array<{ id: string; name: string; nis?: string }>>(`/classes/${classId}/students`));
+        setClassStudents(prev => ({ ...prev, [classId]: data }));
+      } catch (err: any) {
+        toast.error(err.message || "Gagal memuat daftar siswa");
+      }
+    }
   }
 
   /* Fetch data saat komponen mount — sekali saja (dependency []) */
@@ -312,18 +342,67 @@ export default function DashboardPage() {
                 Kelas yang Diampu
               </h3>
               <div className="space-y-2">
-                {/* Iterasi daftar kelas yang diampu guru */}
+                {/* Iterasi daftar kelas yang diampu guru — expandable */}
                 {data.managedClasses.map((cls) => (
-                  <div
-                    key={cls.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    {/* Nama kelas */}
-                    <span className="text-sm font-medium text-gray-900">{cls.name}</span>
-                    {/* Jumlah siswa di kelas */}
-                    <span className="text-xs text-gray-500 font-medium">
-                      {cls._count?.students || 0} siswa
-                    </span>
+                  <div key={cls.id}>
+                    {/* Header kelas — klik untuk expand/collapse */}
+                    <div
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                      onClick={() => toggleClassStudents(cls.id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {expandedClass === cls.id ? (
+                          <MinusCircle className="w-4 h-4 text-blue-500" />
+                        ) : (
+                          <PlusCircle className="w-4 h-4 text-gray-400" />
+                        )}
+                        <span className="text-sm font-medium text-gray-900">{cls.name}</span>
+                      </div>
+                      <span className="text-xs text-gray-500 font-medium">
+                        {cls._count?.students || 0} siswa
+                      </span>
+                    </div>
+                    {/* Expanded student list — tampil hanya jika kelas ini di-expand */}
+                    {expandedClass === cls.id && (
+                      <div className="mt-1 ml-6 space-y-1">
+                        {!classStudents[cls.id] ? (
+                          <div className="flex items-center gap-2 p-2">
+                            <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                            <span className="text-xs text-gray-400">Memuat daftar siswa...</span>
+                          </div>
+                        ) : classStudents[cls.id].length === 0 ? (
+                          <p className="text-xs text-gray-400 p-2">Belum ada siswa di kelas ini</p>
+                        ) : (
+                          <>
+                            {classStudents[cls.id].slice(0, 10).map((student) => (
+                              <Link
+                                key={student.id}
+                                href={`/students/${student.id}`}
+                                className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors group"
+                              >
+                                <ChevronRight className="w-3 h-3 text-gray-300 group-hover:text-gray-500 transition-colors" />
+                                <span className="text-sm text-gray-700 group-hover:text-blue-600 transition-colors">
+                                  {student.name}
+                                </span>
+                                {student.nis && (
+                                  <span className="text-[10px] text-gray-400">({student.nis})</span>
+                                )}
+                              </Link>
+                            ))}
+                            {/* Link "Lihat semua" jika siswa > 10 */}
+                            {classStudents[cls.id].length > 10 && (
+                              <Link
+                                href={`/classes/${cls.id}`}
+                                className="flex items-center gap-2 p-2 text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                                Lihat semua {classStudents[cls.id].length} siswa
+                              </Link>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

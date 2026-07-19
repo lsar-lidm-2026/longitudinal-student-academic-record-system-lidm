@@ -126,8 +126,9 @@ model SemesterRecord {
   studentId      String
   academicYearId String
   semester       Int      // 1 untuk Ganjil, 2 untuk Genap
-  createdById    String
-  createdAt      DateTime @default(now())
+  createdById              String
+  developmentDescription   String?  @db.Text // Deskripsi perkembangan manual (FR-05)
+  createdAt                DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   // Relasi Utama

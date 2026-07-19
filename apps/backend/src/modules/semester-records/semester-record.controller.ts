@@ -325,4 +325,23 @@ export const semesterRecordSubController = new Elysia({ prefix: "/semester-recor
           }),
         }
       )
+
+      // ===================== Development Description (FR-05) =====================
+      // PATCH /semester-records/:id/development-description — manual text by teacher
+      .patch(
+        "/:id/development-description",
+        async ({ params, body, user }) => {
+          logger.info({ userId: user.userId, recordId: params.id }, "PATCH development description");
+          const updated = await service.update(params.id, {
+            developmentDescription: body.developmentDescription,
+          });
+          logger.info({ recordId: params.id }, "Development description updated");
+          return success(updated);
+        },
+        {
+          body: t.Object({
+            developmentDescription: t.Optional(t.String()),
+          }),
+        }
+      )
   );

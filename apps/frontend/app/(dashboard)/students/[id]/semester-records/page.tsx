@@ -48,6 +48,7 @@ import {
   Download,
   Loader2,
   MessageSquare,
+  AlignLeft,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api, API_BASE_URL } from "@/lib/api";
@@ -216,6 +217,12 @@ export default function SemesterRecordsPage() {
   /** Indikator saving catatan baru */
   const [savingNote, setSavingNote] = useState(false);
 
+  // ── Development Description state ──────────────────────────────────
+  /** Konten deskripsi perkembangan */
+  const [devDescription, setDevDescription] = useState("");
+  /** Indikator saving deskripsi perkembangan */
+  const [savingDevDesc, setSavingDevDesc] = useState(false);
+
   /**
    * refresh — Fungsi utama untuk memuat data awal halaman.
    * Mengambil academic years, semester records, dan profil siswa secara paralel.
@@ -329,6 +336,9 @@ export default function SemesterRecordsPage() {
     } else {
       setHealthForm(emptyHealthForm());
     }
+
+    // ── Deskripsi Perkembangan ──
+    setDevDescription(record.developmentDescription || "");
   }
 
   /**
@@ -754,6 +764,39 @@ export default function SemesterRecordsPage() {
     }
   }
 
+  // ── Development Description handlers ─────────────────────────────
+
+  /**
+   * saveDevDescription — Menyimpan deskripsi perkembangan siswa.
+   * Mengirim PATCH ke /semester-records/:id/development-description.
+   */
+  async function saveDevDescription() {
+    if (!recordId) return;
+    setSavingDevDesc(true);
+    logger.info("SemesterRecordsPage", "Menyimpan deskripsi perkembangan", { recordId });
+    try {
+      await api.handleResponse(
+        api.patch(`/semester-records/${recordId}/development-description`, {
+          developmentDescription: devDescription,
+        })
+      );
+      toast.success("Deskripsi perkembangan berhasil disimpan");
+      logger.info("SemesterRecordsPage", "Deskripsi perkembangan berhasil disimpan", { recordId });
+    } catch (err: any) {
+      logger.error("SemesterRecordsPage", "Gagal menyimpan deskripsi perkembangan", { err });
+      toast.error(err.message || "Gagal menyimpan deskripsi perkembangan");
+    } finally {
+      setSavingDevDesc(false);
+    }
+  }
+
+  /** Auto-save on blur — panggil saveDevDescription jika ada recordId */
+  async function handleBlurSave() {
+    if (recordId) {
+      await saveDevDescription();
+    }
+  }
+
   /** Tahun ajaran yang sedang dipilih (untuk ditampilkan di header) */
   const activeYear = academicYears.find((y) => y.id === selectedYear);
 
@@ -895,6 +938,9 @@ export default function SemesterRecordsPage() {
             </TabsTrigger>
             <TabsTrigger value="catatan" className="gap-1.5">
               <FileText className="w-3.5 h-3.5" /> Catatan
+            </TabsTrigger>
+            <TabsTrigger value="deskripsi" className="gap-1.5">
+              <AlignLeft className="w-3.5 h-3.5" /> Deskripsi
             </TabsTrigger>
           </TabsList>
 
@@ -1576,6 +1622,41 @@ export default function SemesterRecordsPage() {
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* ── Tab: Deskripsi Perkembangan ────────────────────── */}
+          <TabsContent value="deskripsi">
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <AlignLeft className="w-4 h-4 text-blue-500" />
+                <h3 className="text-sm font-semibold text-gray-900">Deskripsi Perkembangan Siswa</h3>
+              </div>
+              <p className="text-xs text-gray-400 mb-3 ml-6">
+                Tulis deskripsi perkembangan siswa secara manual untuk semester ini.
+              </p>
+              <textarea
+                value={devDescription}
+                onChange={(e) => setDevDescription(e.target.value)}
+                onBlur={handleBlurSave}
+                placeholder="Tulis deskripsi perkembangan siswa di sini..."
+                rows={8}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all resize-y placeholder:text-gray-300"
+              />
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={saveDevDescription}
+                  disabled={savingDevDesc}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {savingDevDesc ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {savingDevDesc ? "Menyimpan..." : "Simpan Deskripsi"}
+                </button>
               </div>
             </div>
           </TabsContent>

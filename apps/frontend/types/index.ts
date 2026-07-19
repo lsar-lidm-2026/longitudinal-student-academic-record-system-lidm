@@ -170,6 +170,8 @@ export interface SemesterRecord {
   achievements: Achievement[];
   /** Data kesehatan (1:1 dengan SemesterRecord) */
   healthRecord: HealthRecord | null;
+  /** Deskripsi perkembangan dari guru (manual input) */
+  developmentDescription?: string | null;
   /** Riwayat ringkasan AI untuk semester ini */
   aiSummaries?: AiSummary[];
 }

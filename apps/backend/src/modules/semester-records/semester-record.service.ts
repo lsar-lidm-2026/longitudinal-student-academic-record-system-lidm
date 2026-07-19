@@ -138,7 +138,7 @@ export async function getById(id: string) {
  * @param data - Partial update fields
  * @throws NotFoundError if record does not exist
  */
-export async function update(id: string, data: { academicYearId?: string; semester?: number }) {
+export async function update(id: string, data: { academicYearId?: string; semester?: number; developmentDescription?: string | null }) {
   logger.info({ recordId: id, data }, "Semester record service: updating record");
   // Ensure record exists before update
   await getById(id);
