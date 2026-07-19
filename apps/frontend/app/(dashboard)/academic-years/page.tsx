@@ -72,6 +72,20 @@ export default function AcademicYearsPage() {
   async function create(e: FormEvent) {
     e.preventDefault();
     if (creating) return;
+
+    // Validasi format tahun ajaran: harus YYYY/YYYY
+    if (!/^\d{4}\/\d{4}$/.test(newYear)) {
+      toast.error("Format tahun ajaran harus YYYY/YYYY (contoh: 2025/2026)");
+      return;
+    }
+
+    // Validasi tahun kedua = tahun pertama + 1
+    const [year1, year2] = newYear.split("/").map(Number);
+    if (year2 !== year1 + 1) {
+      toast.error("Tahun kedua harus tahun pertama + 1 (contoh: 2025/2026)");
+      return;
+    }
+
     setCreating(true);
     logger.info("AcademicYearsPage", "Membuat tahun ajaran baru", { year: newYear });
     try {
@@ -265,6 +279,8 @@ export default function AcademicYearsPage() {
                   placeholder="Contoh: 2025/2026"
                   value={newYear}
                   onChange={(e) => setNewYear(e.target.value)}
+                  pattern="^\d{4}/\d{4}$"
+                  title="Format: YYYY/YYYY (contoh: 2025/2026)"
                   required
                   className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
                 />

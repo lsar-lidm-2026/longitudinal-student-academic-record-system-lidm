@@ -56,6 +56,41 @@ class ApiClient {
       this.token = localStorage.getItem("accessToken");
       logger.info("ApiClient", "Constructor initialized", { hasToken: !!this.token });
     }
+    // Proactive refresh — refresh token jika akan expired dalam 5 menit
+    this.proactiveRefresh();
+  }
+
+  /**
+   * Proactive token refresh saat konstruktor dipanggil.
+   * Mengecek expiry JWT: jika token akan expired dalam <5 menit, refresh sekarang.
+   * Jika decode gagal atau token tidak ada, silent skip (401 handler akan menangani nanti).
+   */
+  private proactiveRefresh() {
+    const token = this.getToken();
+    if (!token) return;
+
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      const exp = payload.exp * 1000; // JWT exp dalam detik → milidetik
+      const now = Date.now();
+
+      // Jika token expires dalam 5 menit dan masih valid, refresh sekarang
+      if (exp - now < 5 * 60 * 1000 && exp > now) {
+        this.refreshToken().catch(() => {
+          // Silent fail — jika refresh gagal, token akan direfresh pada 401 pertama
+        });
+      }
+    } catch {
+      // Invalid token — akan ditangani oleh 401 handler
+    }
+  }
+
+  /**
+   * refreshToken — Public wrapper untuk refreshSession().
+   * Digunakan oleh proactiveRefresh() untuk memicu refresh dari luar.
+   */
+  async refreshToken(): Promise<boolean> {
+    return this.ensureFreshToken();
   }
 
   /**

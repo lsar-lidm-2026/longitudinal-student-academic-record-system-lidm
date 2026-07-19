@@ -253,17 +253,21 @@ export default function DashboardPage() {
             iconColor="text-amber-500"
             isText
           />
-          {/* Draft AI pending — hanya tampil jika ada data dari API */}
-          {data.pendingAiDrafts !== undefined && (
-            <StatCard
-              icon={Sparkles}
-              label="Review AI"
-              value={data.pendingAiDrafts}
-              iconBg="bg-purple-50"
-              iconColor="text-purple-500"
-              subtitle="Perlu tinjauan"
-            />
-          )}
+          {/* Draft AI — kartu dengan status badge merah/hijau */}
+          <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-500">Draft AI</span>
+              <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${
+                (data?.pendingAiDrafts || 0) > 0
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-green-100 text-green-700'
+              }`}>
+                {(data?.pendingAiDrafts || 0) > 0 ? 'Perlu Review' : 'Selesai'}
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{data?.pendingAiDrafts || 0}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Draft AI belum difinalisasi</p>
+          </div>
         </div>
       </div>
 

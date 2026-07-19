@@ -53,7 +53,7 @@ export const classController = new Elysia({ prefix: "/classes" })
     {
       // Validasi body: name (string) dan academicYearId (string) wajib
       body: t.Object({
-        name: t.String(),
+        name: t.RegExp(/^\d+[A-Z]$/, { description: "Format kelas harus angka + huruf besar (contoh: 1A, 6B)" }),
         academicYearId: t.String(),
       }),
     }

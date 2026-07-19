@@ -130,14 +130,14 @@ export async function create(data: {
   const existingNis = await prisma.student.findUnique({ where: { nis: data.nis } });
   if (existingNis) {
     logger.warn({ nis: data.nis }, "Duplicate NIS on student creation");
-    throw new ConflictError("NIS already exists");
+    throw new ConflictError(`NIS "${data.nis}" sudah digunakan`);
   }
 
   // Check for duplicate NISN (unique constraint)
   const existingNisn = await prisma.student.findUnique({ where: { nisn: data.nisn } });
   if (existingNisn) {
     logger.warn({ nisn: data.nisn }, "Duplicate NISN on student creation");
-    throw new ConflictError("NISN already exists");
+    throw new ConflictError(`NISN "${data.nisn}" sudah digunakan`);
   }
 
   // Build create payload — spread required fields + optional fields if present
@@ -289,6 +289,24 @@ export async function update(
     if (!classExists) {
       logger.warn({ classId: data.classId }, "Class not found for student update");
       throw new NotFoundError("Class not found");
+    }
+  }
+
+  // Check duplicate NIS (exclude current student)
+  if (data.nis) {
+    const existingNis = await prisma.student.findUnique({ where: { nis: data.nis } });
+    if (existingNis && existingNis.id !== id) {
+      logger.warn({ nis: data.nis }, "Duplicate NIS on student update");
+      throw new ConflictError(`NIS "${data.nis}" sudah digunakan oleh siswa lain`);
+    }
+  }
+
+  // Check duplicate NISN (exclude current student)
+  if (data.nisn) {
+    const existingNisn = await prisma.student.findUnique({ where: { nisn: data.nisn } });
+    if (existingNisn && existingNisn.id !== id) {
+      logger.warn({ nisn: data.nisn }, "Duplicate NISN on student update");
+      throw new ConflictError(`NISN "${data.nisn}" sudah digunakan oleh siswa lain`);
     }
   }
 

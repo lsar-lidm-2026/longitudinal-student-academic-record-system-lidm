@@ -73,6 +73,20 @@ if (!env.jwtSecret) {
   process.exit(1);
 }
 
+// Validate DATABASE_URL — tanpa database server tidak berguna
+if (!env.databaseUrl) {
+  logger.fatal({ context: "startup" }, "DATABASE_URL is not set. Check your .env file.");
+  process.exit(1);
+}
+
+// Warning for optional but important vars
+if (!env.llmApiKey) {
+  logger.warn({ context: "startup" }, "AI_LLM_API_KEY not set — AI features will use mock responses");
+}
+if (!env.smtpUser) {
+  logger.warn({ context: "startup" }, "SMTP not configured — password reset emails will not be delivered");
+}
+
 // Create Elysia application instance with plugins and configuration
 const app = new Elysia()
   // CORS middleware — mengizinkan origin tertentu (localhost untuk dev, atau CORS_ORIGIN dari env)

@@ -19,7 +19,7 @@
 
 import logger from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
-import { NotFoundError } from "../../common/error";
+import { NotFoundError, ValidationError } from "../../common/error";
 
 // ── List All Classes ─────────────────────────────────────────────────────────
 
@@ -103,6 +103,11 @@ export async function create(data: {
   academicYearId: string;
 }) {
   logger.info({ name: data.name, academicYearId: data.academicYearId }, "class.service.create — start");
+
+  // Validasi format nama kelas: angka + huruf besar (contoh: 1A, 6B)
+  if (!/^\d+[A-Z]$/.test(data.name)) {
+    throw new ValidationError("Format kelas harus angka + huruf besar (contoh: 1A, 6B)");
+  }
 
   // Buat kelas baru di database
   const newClass = await prisma.class.create({ data });

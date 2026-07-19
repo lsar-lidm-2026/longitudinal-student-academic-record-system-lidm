@@ -19,7 +19,7 @@
 
 import logger from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
-import { ConflictError, NotFoundError } from "../../common/error";
+import { ConflictError, NotFoundError, ValidationError } from "../../common/error";
 
 // ── List All ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,11 @@ export async function getById(id: string) {
  */
 export async function create(data: { year: string }) {
   logger.info({ year: data.year }, "academic-year.service.create — start");
+
+  // Validasi format tahun ajaran: YYYY/YYYY (contoh: 2025/2026)
+  if (!/^\d{4}\/\d{4}$/.test(data.year)) {
+    throw new ValidationError("Format tahun ajaran harus YYYY/YYYY (contoh: 2025/2026)");
+  }
 
   // Cek apakah tahun ajaran dengan year yang sama sudah ada
   const existing = await prisma.academicYear.findUnique({

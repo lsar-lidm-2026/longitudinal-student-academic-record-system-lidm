@@ -47,7 +47,7 @@ export const academicYearController = new Elysia({ prefix: "/academic-years" })
     },
     {
       // Validasi body: year (string) wajib diisi
-      body: t.Object({ year: t.String() }),
+      body: t.Object({ year: t.RegExp(/^\d{4}\/\d{4}$/, { description: "Format tahun harus YYYY/YYYY (contoh: 2025/2026)" }) }),
     }
   )
   // ── PUT /academic-years/:id ────────────────────────────────────────────────

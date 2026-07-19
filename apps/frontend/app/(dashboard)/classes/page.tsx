@@ -26,7 +26,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import type { ClassItem, User as UserType, AiSummary } from "@/types";
-import { BookOpen, Users, ShieldCheck, GraduationCap, AlertCircle, Sparkles, Loader2, X, FileText, Search } from "lucide-react";
+import { BookOpen, Users, ShieldCheck, GraduationCap, AlertCircle, Sparkles, Loader2, X, FileText, Search, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ClassesPage() {
@@ -40,6 +40,43 @@ export default function ClassesPage() {
   const [error, setError] = useState<string | null>(null);
   /** Role user yang sedang login (dari /auth/me) */
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
+  // -- Tambah Kelas --
+  /** Modal tambah kelas */
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  /** Nama kelas baru (contoh: 1A) */
+  const [newClassName, setNewClassName] = useState("");
+  /** Nama kelas baru — error validation */
+  const [createError, setCreateError] = useState<string | null>(null);
+  /** Loading state saat create */
+  const [creating, setCreating] = useState(false);
+
+  /**
+   * handleCreateClass — Membuat kelas baru via POST /classes
+   * Validasi format nama kelas: angka + huruf besar (1A, 6B)
+   */
+  async function handleCreateClass() {
+    const name = newClassName.trim().toUpperCase();
+    if (!/^\d+[A-Z]$/.test(name)) {
+      setCreateError("Format: angka + huruf besar (contoh: 1A, 6B)");
+      return;
+    }
+    setCreateError(null);
+    setCreating(true);
+    try {
+      await api.handleResponse(
+        api.post("/classes", { name, academicYearId: selectedYearId })
+      );
+      toast.success(`Kelas ${name} berhasil dibuat`);
+      setIsCreateModalOpen(false);
+      setNewClassName("");
+      refresh();
+    } catch (err: any) {
+      setCreateError(err.message || "Gagal membuat kelas");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   // -- Transition Summary (FR-13) --
   /** ID kelas yang sedang di-generate transition summary-nya */
@@ -218,25 +255,34 @@ export default function ClassesPage() {
               Kelola data kelas dan pembagian wali kelas untuk setiap tahun ajaran aktif.
             </p>
           </div>
-          {/* Filter Tahun Ajaran */}
-          {academicYears.length > 0 && (
-            <div className="w-full sm:w-56">
-              <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                Filter Tahun Ajaran
-              </label>
-              <select
-                value={selectedYearId}
-                onChange={(e) => setSelectedYearId(e.target.value)}
-                className="w-full h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-gray-900"
+          {/* Tombol aksi */}
+          <div className="flex items-center gap-2">
+            {isAdm && (
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
               >
-                {academicYears.map((y) => (
-                  <option key={y.id} value={y.id}>
-                    {y.year} {y.isActive ? "(Aktif)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+                <Plus className="w-3.5 h-3.5" />
+                Tambah Kelas
+              </button>
+            )}
+            {/* Filter Tahun Ajaran */}
+            {academicYears.length > 0 && (
+              <div className="w-48">
+                <select
+                  value={selectedYearId}
+                  onChange={(e) => setSelectedYearId(e.target.value)}
+                  className="w-full h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-gray-900"
+                >
+                  {academicYears.map((y) => (
+                    <option key={y.id} value={y.id}>
+                      {y.year} {y.isActive ? "(Aktif)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Mini Stats ──────────────────────────────────────────────── */}
@@ -445,6 +491,54 @@ export default function ClassesPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal Tambah Kelas ──────────────────────────────────────── */}
+        {isCreateModalOpen && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setIsCreateModalOpen(false)}>
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-gray-900">Tambah Kelas Baru</h2>
+                <button onClick={() => setIsCreateModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Nama Kelas</label>
+                  <input
+                    type="text"
+                    value={newClassName}
+                    onChange={(e) => { setNewClassName(e.target.value); setCreateError(null); }}
+                    placeholder="Contoh: 1A"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    autoFocus
+                    onKeyDown={(e) => e.key === "Enter" && handleCreateClass()}
+                  />
+                  {createError && (
+                    <p className="text-xs text-red-500 mt-1">{createError}</p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">Format: angka + huruf besar (1A, 6B, 2C)</p>
+                </div>
+                <div className="flex items-center gap-2 justify-end pt-1">
+                  <button
+                    onClick={() => setIsCreateModalOpen(false)}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleCreateClass}
+                    disabled={creating}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {creating ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    {creating ? "Menyimpan..." : "Simpan"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

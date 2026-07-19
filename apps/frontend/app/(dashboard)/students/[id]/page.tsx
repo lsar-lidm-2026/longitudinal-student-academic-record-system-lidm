@@ -76,7 +76,16 @@ export default function StudentDetailPage() {
   /** Kontrol visibilitas modal Ubah Biodata */
   const [isModalOpen, setIsModalOpen] = useState(false);
   /** Nilai form biodata — di-populate dari student saat modal dibuka */
-  const [formData, setFormData] = useState({ name: "", nis: "", nisn: "" });
+  const [formName, setFormName] = useState("");
+  const [formNis, setFormNis] = useState("");
+  const [formNisn, setFormNisn] = useState("");
+  const [formGender, setFormGender] = useState("L");
+  const [formBirthDate, setFormBirthDate] = useState("");
+  const [formAddress, setFormAddress] = useState("");
+  const [formParentName, setFormParentName] = useState("");
+  const [formClassId, setFormClassId] = useState("");
+  /** Daftar kelas untuk dropdown edit */
+  const [editClasses, setEditClasses] = useState<Array<{ id: string; name: string }>>([]);
   /** Loading state saat submit form biodata */
   const [isSubmitting, setIsSubmitting] = useState(false);
   /** Router untuk navigasi setelah delete */
@@ -128,12 +137,16 @@ export default function StudentDetailPage() {
   function handleOpenModal() {
     logger.info("StudentDetailPage", "Membuka modal Ubah Biodata", { studentId: params.id });
     if (profile) {
-      // Isi form dari data student yang sudah ada
-      setFormData({
-        name: profile.student.name || "",
-        nis: profile.student.nis || "",
-        nisn: profile.student.nisn || "",
-      });
+      // Isi form dari data student yang sudah ada — semua 8 field
+      const s = profile.student;
+      setFormName(s.name || "");
+      setFormNis(s.nis || "");
+      setFormNisn(s.nisn || "");
+      setFormGender(s.gender || "L");
+      setFormBirthDate(s.birthDate || "");
+      setFormAddress(s.address || "");
+      setFormParentName(s.parentName || "");
+      setFormClassId(s.classId || "");
     }
     setIsModalOpen(true);
   }
@@ -144,7 +157,14 @@ export default function StudentDetailPage() {
   function handleCloseModal() {
     logger.info("StudentDetailPage", "Menutup modal Ubah Biodata");
     setIsModalOpen(false);
-    setFormData({ name: "", nis: "", nisn: "" });
+    setFormName("");
+    setFormNis("");
+    setFormNisn("");
+    setFormGender("L");
+    setFormBirthDate("");
+    setFormAddress("");
+    setFormParentName("");
+    setFormClassId("");
   }
 
   /**
@@ -157,14 +177,19 @@ export default function StudentDetailPage() {
    * 5. Finally → isSubmitting = false.
    */
   async function handleSubmitBiodata() {
-    logger.info("StudentDetailPage", "Submit perubahan biodata", { studentId: params.id, ...formData });
+    logger.info("StudentDetailPage", "Submit perubahan biodata", { studentId: params.id, name: formName, nis: formNis, nisn: formNisn });
     setIsSubmitting(true);
     try {
       await api.handleResponse(
         api.put(`/students/${params.id}`, {
-          name: formData.name,
-          nis: formData.nis,
-          nisn: formData.nisn,
+          name: formName,
+          nis: formNis,
+          nisn: formNisn,
+          gender: formGender,
+          birthDate: formBirthDate,
+          address: formAddress,
+          parentName: formParentName,
+          classId: formClassId,
         })
       );
       logger.info("StudentDetailPage", "Biodata berhasil diperbarui");
@@ -469,6 +494,16 @@ export default function StudentDetailPage() {
     }
   }, [params.id]);
 
+  /**
+   * Fetch daftar kelas untuk dropdown edit biodata.
+   * Dipanggil sekali saat mount agar tidak re-fetch tiap kali modal dibuka.
+   */
+  useEffect(() => {
+    api.get("/classes").then(res => {
+      if ((res as any).data) setEditClasses((res as any).data);
+    }).catch(() => {});
+  }, []);
+
   // ── Loading State: Skeleton ──────────────────────────────────────────
   if (loading) {
     return (
@@ -515,7 +550,7 @@ export default function StudentDetailPage() {
           return sum + scores.reduce((s, sc) => s + sc.knowledgeScore, 0) / scores.length;
         }, 0) / semesterRecords.length
       )
-    : 0;
+    : null;
 
   /** Estimasi tingkat kehadiran berdasarkan total absensi dibagi ~120 hari sekolah per semester */
   const totalAttendanceRate = semesterRecords.length > 0
@@ -656,7 +691,7 @@ export default function StudentDetailPage() {
               </div>
               <div>
                 <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Rata-rata Nilai</p>
-                <p className="text-lg font-bold text-gray-900">{avgScore || "-"}</p>
+                <p className="text-lg font-bold text-gray-900">{avgScore !== null && avgScore !== undefined ? avgScore : "N/A"}</p>
               </div>
             </div>
           </div>
@@ -1082,40 +1117,98 @@ export default function StudentDetailPage() {
               </button>
             </div>
 
-            {/* Body modal — form biodata */}
-            <div className="px-6 py-5 space-y-4">
-              {/* Field: Nama Lengkap */}
+            {/* Body modal — form biodata (8 fields) */}
+            <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* 1. Field: Nama Lengkap */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>
                 <input
                   type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Nama lengkap siswa"
                 />
               </div>
-              {/* Field: NIS (Nomor Induk Siswa) */}
+              {/* 2. Field: NIS */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">NIS</label>
                 <input
                   type="text"
-                  value={formData.nis}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, nis: e.target.value }))}
+                  value={formNis}
+                  onChange={(e) => setFormNis(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Nomor Induk Siswa"
                 />
               </div>
-              {/* Field: NISN (Nomor Induk Siswa Nasional) */}
+              {/* 3. Field: NISN */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">NISN</label>
                 <input
                   type="text"
-                  value={formData.nisn}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, nisn: e.target.value }))}
+                  value={formNisn}
+                  onChange={(e) => setFormNisn(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   placeholder="Nomor Induk Siswa Nasional"
                 />
+              </div>
+              {/* 4. Field: Jenis Kelamin */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Kelamin</label>
+                <select
+                  value={formGender}
+                  onChange={(e) => setFormGender(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="L">Laki-laki</option>
+                  <option value="P">Perempuan</option>
+                </select>
+              </div>
+              {/* 5. Field: Tanggal Lahir */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Lahir</label>
+                <input
+                  type="date"
+                  value={formBirthDate}
+                  onChange={(e) => setFormBirthDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                />
+              </div>
+              {/* 6. Field: Alamat */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
+                <textarea
+                  value={formAddress}
+                  onChange={(e) => setFormAddress(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                  placeholder="Alamat lengkap siswa"
+                />
+              </div>
+              {/* 7. Field: Nama Orang Tua */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Orang Tua</label>
+                <input
+                  type="text"
+                  value={formParentName}
+                  onChange={(e) => setFormParentName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="Nama orang tua atau wali"
+                />
+              </div>
+              {/* 8. Field: Kelas */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
+                <select
+                  value={formClassId}
+                  onChange={(e) => setFormClassId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                >
+                  <option value="">Pilih kelas...</option>
+                  {editClasses.map((cls) => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
