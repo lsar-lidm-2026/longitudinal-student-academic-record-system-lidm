@@ -43,6 +43,7 @@ import { success, paginated } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { requireHomeroomAccess } from "../../middleware/homeroom";
 import { checkRole } from "../../middleware/role";
+import { prisma } from "../../lib/prisma";
 import logger from "../../lib/logger";
 
 export const studentController = new Elysia({ prefix: "/students" })
@@ -53,8 +54,24 @@ export const studentController = new Elysia({ prefix: "/students" })
     // Verify user has at minimum GURU role to access student list
     checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "KEPALA_SEKOLAH", "GURU");
     logger.info({ userId: user.userId, query }, "Listing students");
+    // GURU hanya bisa melihat siswa di kelas walinya — filter classId otomatis
+    // ADMIN, OPERATOR, KEPSEK bisa lihat semua siswa
+    const effectiveQuery = { ...query };
+    if (user.role === "GURU") {
+      const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
+      if (activeYear) {
+        const myClasses = await prisma.class.findMany({
+          where: { homeroomTeacherId: user.userId, academicYearId: activeYear.id },
+          select: { id: true },
+        });
+        if (myClasses.length > 0) {
+          effectiveQuery.classId = myClasses.map(c => c.id).join(",");
+          logger.info({ classIds: effectiveQuery.classId }, "GURU: filtered to homeroom classes");
+        }
+      }
+    }
     // Delegate to service layer for filtering & pagination logic
-    const result = await service.list(query);
+    const result = await service.list(effectiveQuery);
     logger.info({ total: result.total, page: result.page, limit: result.limit }, "Students listed successfully");
     // Return paginated response with data, page, limit, total
     return paginated(result.data, result.page, result.limit, result.total);

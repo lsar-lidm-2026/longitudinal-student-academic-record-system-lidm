@@ -47,8 +47,13 @@ export async function list(query: { page?: string; limit?: string; classId?: str
   logger.debug({ query }, "Student service: listing students");
   // Parse pagination parameters from query string (default page=1, limit=10)
   const { page, limit } = parsePagination(query);
-  // Build where clause: filter by classId if provided
-  const where: any = query.classId ? { classId: query.classId } : {};
+  // Build where clause: filter by classId(s) if provided
+  // Mendukung comma-separated untuk multiple classId (guru dengan >1 kelas wali)
+  const where: any = {};
+  if (query.classId) {
+    const classIds = query.classId.split(",").filter(Boolean);
+    where.classId = classIds.length === 1 ? classIds[0] : { in: classIds };
+  }
   // Add name search filter (case-insensitive contains) if search term provided
   if (query.search) {
     where.name = { contains: query.search, mode: "insensitive" };

@@ -245,13 +245,14 @@ async function main() {
       }
     }
   }
-  // Distribute homeroom teachers more evenly
+  // Distribute homeroom teachers — per kelas per tahun (fix: tiap kelas dpt guru berbeda tiap tahun)
   const teacherCycle = [userIds.guru1, userIds.guru2, userIds.guru3];
   let classIdx = 0;
   for (const { names } of gradeClasses) {
-    for (const _cn of names) {
-      for (const _y of yearLabels) {
-        classRows[classIdx][3] = teacherCycle[classIdx % 3];
+    for (let ni = 0; ni < names.length; ni++) {
+      for (let yi = 0; yi < yearLabels.length; yi++) {
+        // ni = index nama dalam grade, yi = index tahun → rotasi guru
+        classRows[classIdx][3] = teacherCycle[(ni + yi) % 3];
         classIdx++;
       }
     }
