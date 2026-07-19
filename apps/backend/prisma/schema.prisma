@@ -39,6 +39,8 @@ model User {
   managedClasses Class[]          @relation("HomeroomTeacher")
   // Relasi: Pengguna yang membuat record semester
   createdRecords SemesterRecord[] @relation("RecordCreator")
+  // Relasi: Catatan guru yang dibuat oleh user ini
+  teacherNotes   TeacherNote[]
   // Relasi: Audit trail pencatatan perubahan wali kelas
   auditLogs      ClassAuditLog[]
 
@@ -110,6 +112,7 @@ model Student {
   semesterRecords  SemesterRecord[]
   predictedOutcomes PredictedOutcome[]
   documents        StudentDocument[]
+  teacherNotes     TeacherNote[]
 
   @@map("student")
 }
@@ -238,6 +241,22 @@ model StudentDocument {
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("student_document")
+}
+
+// ── Teacher Notes (Catatan Guru) ─────────────────────────────────────────────
+
+model TeacherNote {
+  id          String   @id @default(uuid())
+  studentId   String
+  createdById String   // User ID guru yang membuat catatan
+  content     String   @db.Text // Isi catatan
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@map("teacher_note")
 }
 
 // ── ML Models ─────────────────────────────────────────────────────

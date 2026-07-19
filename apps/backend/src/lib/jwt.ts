@@ -22,15 +22,18 @@ import logger from "./logger";
 
 /**
  * Mendapatkan opsi expiresIn dari environment variable.
- * jsonwebtoken menerima string ("7d") atau number (detik) — kita deteksi otomatis.
+ * jsonwebtoken menerima string ("7d", "1h") atau number (detik).
+ * parseInt("7d") = 7 (BUG!) — kita harus deteksi string durasi dengan regex.
  * @returns SignOptions dengan expiresIn yang sesuai.
  */
 function getExpiresIn(): SignOptions {
   const val = env.jwtExpiresIn;
-  // jsonwebtoken accepts either a string like "7d" or a number of seconds
-  const num = parseInt(val, 10);
-  // Jika hasil parseInt NaN berarti val adalah string durasi, otherwise gunakan angka
-  return { expiresIn: isNaN(num) ? val : num } as SignOptions;
+  // Hanya gunakan parseInt jika seluruh string adalah angka (detik)
+  // Jika mengandung huruf seperti "7d", "1h", "30m", langsung gunakan sebagai string
+  const isPureNumber = /^\d+$/.test(val);
+  const expiresIn = isPureNumber ? parseInt(val, 10) : val;
+  logger.debug({ val, expiresIn, isPureNumber }, "JWT expiresIn configured");
+  return { expiresIn } as SignOptions;
 }
 
 /**

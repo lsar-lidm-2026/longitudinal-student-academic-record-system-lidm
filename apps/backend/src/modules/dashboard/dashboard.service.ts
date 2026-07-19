@@ -198,3 +198,91 @@ export async function getAdministrativeStatus(userId: string, role: Role) {
   logger.info({ userId, role, classCount: results.length }, "Administrative status fetched successfully");
   return results;
 }
+
+/**
+ * ActivityItem — Tipe data item aktivitas yang dikembalikan ke frontend.
+ */
+export interface ActivityItem {
+  id: string;
+  action: string;
+  description: string;
+  userName: string;
+  timestamp: string;
+}
+
+/**
+ * getActivities — Mengembalikan daftar aktivitas terbaru dari seluruh sistem.
+ *
+ * Sumber data:
+ * 1. AiSummary — pembuatan draft AI baru.
+ * 2. ClassAuditLog — perubahan wali kelas.
+ *
+ * @param userId - ID user yang sedang terautentikasi.
+ * @param role - Role user.
+ * @returns Array of ActivityItem — maksimal 10 item terbaru.
+ */
+export async function getActivities(userId: string, role: Role): Promise<ActivityItem[]> {
+  logger.info({ userId, role }, "Fetching recent activities");
+
+  // Query paralel dari dua sumber data
+  const [aiSummaries, auditLogs] = await Promise.all([
+    // 1. Ambil 10 AI Summary terbaru (draft yang belum final)
+    prisma.aiSummary.findMany({
+      where: { isFinal: false },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        summaryType: true,
+        createdAt: true,
+        semesterRecord: {
+          select: {
+            student: { select: { name: true } },
+            semester: true,
+          },
+        },
+      },
+    }),
+    // 2. Ambil 10 ClassAuditLog terbaru
+    prisma.classAuditLog.findMany({
+      orderBy: { changedAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        changedAt: true,
+        class: { select: { name: true } },
+        changedBy: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  // Transform AiSummary → ActivityItem
+  const aiActivities: ActivityItem[] = aiSummaries.map((s) => {
+    const studentName = s.semesterRecord?.student?.name || "Unknown";
+    const semesterLabel = s.semesterRecord?.semester === 1 ? "Ganjil" : "Genap";
+    return {
+      id: `ai-${s.id}`,
+      action: "AI_DRAFT_CREATED",
+      description: `Draft AI untuk ${studentName} (Semester ${semesterLabel}) dibuat`,
+      userName: "Sistem AI",
+      timestamp: s.createdAt.toISOString(),
+    };
+  });
+
+  // Transform ClassAuditLog → ActivityItem
+  const auditActivities: ActivityItem[] = auditLogs.map((log) => ({
+    id: `audit-${log.id}`,
+    action: "TEACHER_CHANGED",
+    description: `Wali kelas ${log.class?.name || "Unknown"} diperbarui`,
+    userName: log.changedBy?.name || "Sistem",
+    timestamp: log.changedAt.toISOString(),
+  }));
+
+  // Gabung, urutkan berdasarkan timestamp (descending), ambil 10 teratas
+  const allActivities = [...aiActivities, ...auditActivities]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 10);
+
+  logger.info({ userId, role, activityCount: allActivities.length }, "Activities fetched successfully");
+  return allActivities;
+}

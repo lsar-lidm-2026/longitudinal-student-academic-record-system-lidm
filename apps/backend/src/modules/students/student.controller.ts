@@ -18,13 +18,18 @@
  *    - service.create() untuk insert ke database
  *    - return success response dengan data siswa baru
  *
- * 3. PUT /students/:id
+ * 3. POST /students/bulk
+ *    - checkRole (ADMINISTRATOR, OPERATOR_SEKOLAH)
+ *    - bulkImportService.importStudents() — validasi per-entry + insert transaksional
+ *    - return { imported: number, errors: { index, message }[] }
+ *
+ * 4. PUT /students/:id
  *    - requireHomeroomAccess guard — guru hanya bisa akses siswa di kelas walinya
  *    - checkRole (OPERATOR_SEKOLAH)
  *    - service.update() untuk update field parsial
  *    - return success response dengan data yang diupdate
  *
- * 4. GET /students/:id
+ * 5. GET /students/:id
  *    - requireHomeroomAccess guard
  *    - checkRole (min GURU)
  *    - service.getById() — throw NotFoundError jika tidak ditemukan
@@ -33,6 +38,7 @@
 
 import { Elysia, t } from "elysia";
 import * as service from "./student.service";
+import * as bulkImportService from "./bulk-import.service";
 import { success, paginated } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 import { requireHomeroomAccess } from "../../middleware/homeroom";
@@ -73,6 +79,44 @@ export const studentController = new Elysia({ prefix: "/students" })
         name: t.String(),
         gender: t.String(),
         classId: t.String(),
+      }),
+    }
+  )
+  // ── POST /students/bulk — Import siswa secara massal ────────────────────
+  .post(
+    "/bulk",
+    async ({ body, user }) => {
+      // Hanya ADMINISTRATOR dan OPERATOR_SEKOLAH yang bisa import massal
+      checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH");
+      logger.info({ userId: user.userId, count: body.students?.length }, "Bulk import started");
+
+      // Delegasikan ke bulkImportService untuk validasi dan insert transaksional
+      const result = await bulkImportService.importStudents(body.students);
+
+      logger.info(
+        { imported: result.imported, errors: result.errors.length, userId: user.userId },
+        "Bulk import completed"
+      );
+
+      // Log setiap error individual untuk audit trail dan debugging
+      for (const err of result.errors) {
+        logger.warn({ index: err.index, message: err.message }, "Bulk import entry error");
+      }
+
+      return success(result);
+    },
+    {
+      // Validasi body: array of students dengan field yang sama seperti create individual
+      body: t.Object({
+        students: t.Array(
+          t.Object({
+            name: t.String(),
+            nis: t.String(),
+            nisn: t.String(),
+            gender: t.String(),
+            classId: t.String(),
+          })
+        ),
       }),
     }
   )

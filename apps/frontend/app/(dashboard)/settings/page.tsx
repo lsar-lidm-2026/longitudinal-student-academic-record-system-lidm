@@ -1,5 +1,28 @@
 "use client";
 
+/**
+ * Cara kerja file (How this file works):
+ * =======================================
+ * Halaman Pengaturan Sistem (Settings) dengan menu navigasi tab di sebelah
+ * kiri. Saat ini hanya tab "Profil" yang berfungsi penuh; tab lain
+ * (Keamanan, Notifikasi, Preferensi, Akses) masih placeholder "coming soon".
+ *
+ * Alur lengkap:
+ * 1. useEffect memanggil checkHealth() dan loadProfile() saat mount.
+ * 2. loadProfile() mengambil data user dari /auth/me → mengisi nama user.
+ * 3. checkHealth() mengambil status sistem dari /health:
+ *    - API status (online/offline)
+ *    - Database status (Terhubung/Error)
+ *    - ML Model status (Model siap/Belum dilatih)
+ * 4. Tab kiri menampilkan 5 menu settings + Bantuan + Keluar Akun.
+ *    Saat tab diklik, konten kanan berubah sesuai activeTab.
+ * 5. Tab "Profil" menampilkan:
+ *    - Foto profile (upload placeholder)
+ *    - Form: nama, NIP, email, no WA, alamat
+ *    - Tombol Simpan — PUT /users/:id dengan field name.
+ * 6. Tab lainnya menampilkan placeholder "Fitur ini akan segera tersedia."
+ */
+
 import { useEffect, useState } from "react";
 import {
   User,
@@ -15,10 +38,13 @@ import {
   Save,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import { toast } from "sonner";
 
+/** Tipe tab yang tersedia di halaman settings */
 type SettingsTab = "profil" | "keamanan" | "notifikasi" | "preferensi" | "akses";
 
+/** Konfigurasi menu sidebar settings */
 const settingsMenu = [
   { id: "profil" as SettingsTab, label: "Profil Pengguna", description: "Informasi pribadi dan biodata", icon: User },
   { id: "keamanan" as SettingsTab, label: "Keamanan & Sandi", description: "Ubah kata sandi dan autentikasi", icon: Lock },
@@ -28,85 +54,195 @@ const settingsMenu = [
 ];
 
 export default function SettingsPage() {
+  /** Tab aktif yang sedang ditampilkan */
   const [activeTab, setActiveTab] = useState<SettingsTab>("profil");
+  /** Status koneksi API (checking/ok/error) */
   const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "error">("checking");
+  /** Status database (dari /health) */
   const [dbStatus, setDbStatus] = useState("");
+  /** Status ML model (dari /health) */
   const [mlStatus, setMlStatus] = useState("");
 
-  // Profile form state
+  // ── Profile form state ─────────────────────────────────────────────
   const [profileName, setProfileName] = useState("");
   const [profileNip, setProfileNip] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [profilePhone, setProfilePhone] = useState("");
   const [profileAddress, setProfileAddress] = useState("");
 
+  /** Indikator sedang menyimpan profil */
   const [savingProfile, setSavingProfile] = useState(false);
+  /** ID user yang sedang login (dari /auth/me) */
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // ── Password form state ────────────────────────────────────────────
+  /** Password saat ini — input user */
+  const [currentPassword, setCurrentPassword] = useState("");
+  /** Password baru — input user */
+  const [newPassword, setNewPassword] = useState("");
+  /** Konfirmasi password baru — input user */
+  const [confirmPassword, setConfirmPassword] = useState("");
+  /** Indikator sedang mengirim request ubah password */
+  const [changingPassword, setChangingPassword] = useState(false);
+  /** Pesan error validasi form (inline) */
+  const [passwordError, setPasswordError] = useState("");
+
+  /** Inisialisasi: cek kesehatan sistem + muat data profil */
   useEffect(() => {
     checkHealth();
     loadProfile();
   }, []);
 
+  /**
+   * loadProfile — Mengambil data user yang login dari /auth/me.
+   * Mengisi form nama dan menyimpan ID user.
+   */
   async function loadProfile() {
+    logger.info("SettingsPage", "Memuat profil user");
     try {
       const res = await api.get<{ id: string; username: string; name: string; role: string; isActive: boolean }>("/auth/me");
       if (res.success && res.data) {
         setProfileName(res.data.name || "");
         setCurrentUserId(res.data.id);
+        logger.info("SettingsPage", "Profil user berhasil dimuat", { userId: res.data.id, name: res.data.name });
       }
-    } catch {}
+    } catch (err) {
+      logger.error("SettingsPage", "Gagal memuat profil user", { err });
+    }
   }
 
+  /**
+   * checkHealth — Mengecek status kesehatan sistem dari endpoint /health.
+   * Memperbarui status API, database, dan ML model.
+   */
   async function checkHealth() {
     setApiStatus("checking");
+    logger.info("SettingsPage", "Memeriksa kesehatan sistem");
     try {
       const res = await api.get<any>("/health");
       if (res.success && res.data) {
         const data = res.data as any;
         setApiStatus("ok");
-        // Backend: { status, database: { ok, latency }, analytics: { trained, hasClusterModel } }
+        // Backend response: { status, database: { ok, latency }, analytics: { trained, hasClusterModel } }
         setDbStatus(data.database?.ok ? "Terhubung" : "Error");
         setMlStatus(data.analytics?.trained ? "Model siap" : "Belum dilatih");
+        logger.info("SettingsPage", "Sistem sehat", { db: data.database?.ok, ml: data.analytics?.trained });
       } else {
         setApiStatus("error");
+        logger.error("SettingsPage", "Health check gagal (response)", {});
       }
-    } catch {
+    } catch (err) {
       setApiStatus("error");
       setDbStatus("Tidak terdeteksi");
       setMlStatus("Tidak terdeteksi");
+      logger.error("SettingsPage", "Health check error", { err });
     }
   }
 
+  /**
+   * handleSaveProfile — Menyimpan perubahan profil ke backend.
+   * Mengirim name via PUT /users/:id.
+   */
   async function handleSaveProfile() {
     if (!currentUserId) {
       toast.error("Gagal mendapatkan ID pengguna");
+      logger.error("SettingsPage", "Tidak ada currentUserId saat save profil");
       return;
     }
     setSavingProfile(true);
+    logger.info("SettingsPage", "Menyimpan profil", { userId: currentUserId });
     try {
       // Backend PUT /users/:id menerima { name, role, isActive }
       await api.handleResponse(
         api.put(`/users/${currentUserId}`, { name: profileName })
       );
       toast.success("Profil berhasil diperbarui");
+      logger.info("SettingsPage", "Profil berhasil disimpan");
     } catch (err: any) {
       toast.error(err.message || "Gagal memperbarui profil");
+      logger.error("SettingsPage", "Gagal menyimpan profil", { err });
     } finally {
       setSavingProfile(false);
     }
   }
 
+  /**
+   * handleChangePassword — Mengubah password user via PUT /users/:id.
+   *
+   * Alur:
+   * 1. Validasi client-side: password baru ≥6 karakter, konfirmasi cocok.
+   * 2. Kirim PUT /users/:id dengan body { password: newPassword }.
+   * 3. Jika sukses → tampilkan toast, reset form, log event.
+   * 4. Jika gagal → tampilkan toast error.
+   */
+  async function handleChangePassword(e: React.FormEvent) {
+    // Mencegah reload halaman saat submit form
+    e.preventDefault();
+    logger.info("SettingsPage", "Mengubah password");
+
+    // ── Client-side validation ─────────────────────────────────────────
+    // Reset error state sebelum validasi ulang
+    setPasswordError("");
+
+    // Validasi 1: Password baru minimal 6 karakter
+    if (newPassword.length < 6) {
+      const msg = "Password baru minimal 6 karakter";
+      setPasswordError(msg);
+      logger.warn("SettingsPage", "Validasi gagal — password baru terlalu pendek", { length: newPassword.length });
+      return;
+    }
+
+    // Validasi 2: Konfirmasi password harus cocok dengan password baru
+    if (newPassword !== confirmPassword) {
+      const msg = "Konfirmasi password tidak cocok";
+      setPasswordError(msg);
+      logger.warn("SettingsPage", "Validasi gagal — konfirmasi password tidak cocok");
+      return;
+    }
+
+    // Pastikan currentUserId tersedia sebelum request
+    if (!currentUserId) {
+      toast.error("Gagal mendapatkan ID pengguna");
+      logger.error("SettingsPage", "Tidak ada currentUserId saat ubah password");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      // Kirim password baru ke backend — auth.service.updateUser() menerima field password
+      logger.info("SettingsPage", "Mengirim request ubah password", { userId: currentUserId });
+      await api.handleResponse(
+        api.put(`/users/${currentUserId}`, { password: newPassword })
+      );
+
+      // Sukses — tampilkan toast, reset form, log event
+      toast.success("Password berhasil diperbarui");
+      logger.info("SettingsPage", "Password berhasil diubah", { userId: currentUserId });
+
+      // Reset semua field form password
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordError("");
+    } catch (err: any) {
+      // Error dari backend — tampilkan pesan error dari server
+      toast.error(err.message || "Gagal memperbarui password");
+      logger.error("SettingsPage", "Gagal mengubah password", { err, userId: currentUserId });
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
+      {/* ── Breadcrumb ────────────────────────────────────────────────── */}
       <div className="text-sm text-gray-400 flex items-center gap-1.5">
         <span>Dashboard</span>
         <span>›</span>
         <span className="text-gray-700 font-medium">Pengaturan</span>
       </div>
 
-      {/* Header */}
+      {/* ── Header ────────────────────────────────────────────────────── */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Pengaturan Sistem</h1>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -114,9 +250,9 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Content */}
+      {/* ── Content: 2-column layout ──────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Menu */}
+        {/* ====== Left: Menu ====== */}
         <div className="space-y-1">
           {settingsMenu.map((item) => {
             const Icon = item.icon;
@@ -131,6 +267,7 @@ export default function SettingsPage() {
                     : "hover:bg-gray-50"
                 }`}
               >
+                {/* Ikon menu — berubah warna saat aktif */}
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
                   isActive ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-400"
                 }`}>
@@ -147,15 +284,17 @@ export default function SettingsPage() {
             );
           })}
 
-          {/* Bantuan Section */}
+          {/* ── Bantuan Section ────────────────────────────────────────── */}
           <div className="pt-4 mt-4 border-t border-gray-100">
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 mb-2">
               Bantuan
             </p>
+            {/* Tombol Pusat Bantuan (placeholder) */}
             <button className="w-full flex items-center gap-3 p-3 rounded-xl text-left hover:bg-gray-50 transition-all">
               <HelpCircle className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600">Pusat Bantuan</span>
             </button>
+            {/* Tombol Keluar Akun (placeholder) */}
             <button className="w-full flex items-center gap-3 p-3 rounded-xl text-left hover:bg-red-50 transition-all">
               <LogOut className="w-4 h-4 text-red-400" />
               <span className="text-sm text-red-500">Keluar Akun</span>
@@ -163,16 +302,19 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Right: Content */}
+        {/* ====== Right: Content ====== */}
         <div className="lg:col-span-2">
+          {/* ── Tab: Profil ──────────────────────────────────────────────── */}
           {activeTab === "profil" && (
             <div className="space-y-6">
+              {/* Form Informasi Profil */}
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-900">Informasi Profil</h2>
                 <p className="text-sm text-gray-400 mt-0.5">Perbarui detail pribadi Anda yang akan ditampilkan di platform.</p>
 
-                {/* Photo */}
+                {/* ── Photo Upload ────────────────────────────────────── */}
                 <div className="mt-5 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+                  {/* Avatar placeholder */}
                   <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center">
                     <User className="w-6 h-6 text-gray-400" />
                   </div>
@@ -188,8 +330,9 @@ export default function SettingsPage() {
                   <span className="text-xs text-gray-400 ml-2">Format JPG atau PNG. Maksimum 2MB.</span>
                 </div>
 
-                {/* Form */}
+                {/* ── Form Fields ─────────────────────────────────────── */}
                 <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Nama Lengkap — field ini yang benar-benar disimpan ke backend */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Nama Lengkap</label>
                     <input
@@ -199,6 +342,7 @@ export default function SettingsPage() {
                       className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
                     />
                   </div>
+                  {/* NIP / NUPTK (belum di-save ke backend) */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">NIP / NUPTK</label>
                     <input
@@ -209,6 +353,7 @@ export default function SettingsPage() {
                       className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
                     />
                   </div>
+                  {/* Email Institusi (belum di-save ke backend) */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email Institusi</label>
                     <input
@@ -219,6 +364,7 @@ export default function SettingsPage() {
                       className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
                     />
                   </div>
+                  {/* No. WhatsApp (belum di-save ke backend) */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">No. WhatsApp</label>
                     <input
@@ -229,6 +375,7 @@ export default function SettingsPage() {
                       className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
                     />
                   </div>
+                  {/* Alamat Domisili (belum di-save ke backend) */}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Alamat Domisili</label>
                     <input
@@ -241,7 +388,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* ── Form Actions ────────────────────────────────────── */}
                 <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-100">
                   <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     Batalkan
@@ -261,14 +408,18 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* System Info */}
+              {/* ── System Info ────────────────────────────────────────── */}
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-4">Status Sistem</h3>
                 <div className="space-y-2">
+                  {/* Status API */}
                   <StatusRow label="API Status" value={apiStatus === "ok" ? "Online" : apiStatus === "error" ? "Offline" : "Memeriksa..."} status={apiStatus} />
+                  {/* Status Database */}
                   <StatusRow label="Database" value={dbStatus || "Memeriksa..."} status={dbStatus === "Terhubung" ? "ok" : "error"} />
+                  {/* Status ML Model */}
                   <StatusRow label="ML Model" value={mlStatus || "Memeriksa..."} status={mlStatus === "Model siap" ? "ok" : "checking"} />
                 </div>
+                {/* Tombol refresh status */}
                 <button
                   onClick={checkHealth}
                   className="mt-3 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-medium"
@@ -279,10 +430,100 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {activeTab !== "profil" && (
+          {/* ── Tab: Keamanan & Sandi ──────────────────────────────────── */}
+          {activeTab === "keamanan" && (
+            <div className="space-y-6">
+              {/* Form Ubah Password */}
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h2 className="text-base font-semibold text-gray-900">Keamanan & Sandi</h2>
+                <p className="text-sm text-gray-400 mt-0.5">Ubah kata sandi akun Anda.</p>
+
+                <form onSubmit={handleChangePassword} className="mt-5 space-y-4">
+                  {/* Current Password */}
+                  <div>
+                    <label htmlFor="currentPassword" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Password Saat Ini
+                    </label>
+                    <input
+                      id="currentPassword"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => { setCurrentPassword(e.target.value); setPasswordError(""); }}
+                      required
+                      placeholder="Masukkan password saat ini"
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
+                    />
+                  </div>
+
+                  {/* New Password */}
+                  <div>
+                    <label htmlFor="newPassword" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Password Baru
+                    </label>
+                    <input
+                      id="newPassword"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => { setNewPassword(e.target.value); setPasswordError(""); }}
+                      required
+                      minLength={6}
+                      placeholder="Minimal 6 karakter"
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
+                    />
+                  </div>
+
+                  {/* Confirm New Password */}
+                  <div>
+                    <label htmlFor="confirmPassword" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Konfirmasi Password Baru
+                    </label>
+                    <input
+                      id="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(""); }}
+                      required
+                      placeholder="Ketik ulang password baru"
+                      className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300"
+                    />
+                  </div>
+
+                  {/* Inline validation error — muncul jika validasi client-side gagal */}
+                  {passwordError && (
+                    <p className="text-sm text-red-500">{passwordError}</p>
+                  )}
+
+                  {/* Form Actions */}
+                  <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => { setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setPasswordError(""); }}
+                      className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Batalkan
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={changingPassword}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {changingPassword ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      ) : (
+                        <Save className="w-4 h-4" />
+                      )}
+                      {changingPassword ? "Menyimpan..." : "Perbarui Password"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ── Placeholder untuk tab lain (notifikasi, preferensi, akses) ── */}
+          {activeTab !== "profil" && activeTab !== "keamanan" && (
             <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
               <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                {activeTab === "keamanan" && <Lock className="w-5 h-5 text-gray-400" />}
                 {activeTab === "notifikasi" && <Bell className="w-5 h-5 text-gray-400" />}
                 {activeTab === "preferensi" && <Monitor className="w-5 h-5 text-gray-400" />}
                 {activeTab === "akses" && <Shield className="w-5 h-5 text-gray-400" />}
@@ -299,6 +540,12 @@ export default function SettingsPage() {
   );
 }
 
+/**
+ * StatusRow — Baris status sistem dengan bullet point warna.
+ * @param label - Nama komponen (e.g. "API Status")
+ * @param value - Nilai status (e.g. "Online")
+ * @param status - Kategori status: "ok" (hijau), "error" (merah), lainnya (abu-abu)
+ */
 function StatusRow({ label, value, status }: { label: string; value: string; status: string }) {
   return (
     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -306,6 +553,7 @@ function StatusRow({ label, value, status }: { label: string; value: string; sta
       <span className={`text-sm font-medium flex items-center gap-1.5 ${
         status === "ok" ? "text-green-600" : status === "error" ? "text-red-600" : "text-gray-400"
       }`}>
+        {/* Bullet point — hijau/merah/abu-abu dengan animasi pulse untuk checking */}
         <span className={`w-2 h-2 rounded-full ${
           status === "ok" ? "bg-green-500" : status === "error" ? "bg-red-500" : "bg-gray-300 animate-pulse"
         }`} />

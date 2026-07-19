@@ -35,7 +35,7 @@
  */
 
 import { prisma } from "../../lib/prisma";
-import { ConflictError, NotFoundError } from "../../common/error";
+import { ConflictError, NotFoundError, ValidationError } from "../../common/error";
 import { parsePagination, buildPagination } from "../../common/pagination";
 import logger from "../../lib/logger";
 
@@ -148,6 +148,94 @@ export async function create(data: {
  * @param data - Partial update fields
  * @throws NotFoundError if student or referenced class does not exist
  */
+/**
+ * BulkCreateResult — Hasil dari bulk create, berisi jumlah sukses/gagal dan detail error per baris.
+ */
+export interface BulkCreateResult {
+  successCount: number;
+  errorCount: number;
+  errors: Array<{ row: number; nis?: string; nisn?: string; message: string }>;
+}
+
+/**
+ * Bulk create students from an array of student data.
+ * Setiap siswa diproses secara independen — error pada satu siswa tidak menggagalkan siswa lain.
+ * Validasi per baris: class exists, NIS unik, NISN unik, field required.
+ *
+ * @param studentsData - Array data siswa untuk di-import
+ * @returns BulkCreateResult dengan ringkasan sukses/gagal + detail error per baris
+ */
+export async function bulkCreate(
+  studentsData: Array<{
+    nis: string;
+    nisn: string;
+    name: string;
+    gender: string;
+    classId: string;
+  }>
+): Promise<BulkCreateResult> {
+  logger.info({ count: studentsData.length }, "Student service: bulk creating students");
+
+  const result: BulkCreateResult = { successCount: 0, errorCount: 0, errors: [] };
+
+  for (let i = 0; i < studentsData.length; i++) {
+    const row = i + 1; // 1-indexed for error reporting
+    const data = studentsData[i];
+
+    try {
+      // Validate required fields
+      if (!data.name || !data.nis || !data.nisn || !data.gender || !data.classId) {
+        const missing = [];
+        if (!data.name) missing.push("name");
+        if (!data.nis) missing.push("nis");
+        if (!data.nisn) missing.push("nisn");
+        if (!data.gender) missing.push("gender");
+        if (!data.classId) missing.push("classId");
+        throw new ValidationError(`Field wajib tidak lengkap: ${missing.join(", ")}`);
+      }
+
+      // Validate gender
+      if (!["L", "P"].includes(data.gender)) {
+        throw new ValidationError("Jenis kelamin harus L atau P");
+      }
+
+      // Validate class exists
+      const classExists = await prisma.class.findUnique({ where: { id: data.classId } });
+      if (!classExists) {
+        throw new NotFoundError(`Kelas dengan ID ${data.classId} tidak ditemukan`);
+      }
+
+      // Check duplicate NIS
+      const existingNis = await prisma.student.findUnique({ where: { nis: data.nis } });
+      if (existingNis) {
+        throw new ConflictError(`NIS "${data.nis}" sudah terdaftar`);
+      }
+
+      // Check duplicate NISN
+      const existingNisn = await prisma.student.findUnique({ where: { nisn: data.nisn } });
+      if (existingNisn) {
+        throw new ConflictError(`NISN "${data.nisn}" sudah terdaftar`);
+      }
+
+      // Create student
+      await prisma.student.create({ data });
+      result.successCount++;
+      logger.debug({ row, nis: data.nis, nisn: data.nisn }, "Bulk create: student created");
+    } catch (err: any) {
+      result.errorCount++;
+      const message = err.message || "Unknown error";
+      result.errors.push({ row, nis: data.nis, nisn: data.nisn, message });
+      logger.warn({ row, nis: data.nis, error: message }, "Bulk create: student failed");
+    }
+  }
+
+  logger.info(
+    { successCount: result.successCount, errorCount: result.errorCount },
+    "Student service: bulk create completed"
+  );
+  return result;
+}
+
 export async function update(
   id: string,
   data: { nis?: string; nisn?: string; name?: string; gender?: string; classId?: string }

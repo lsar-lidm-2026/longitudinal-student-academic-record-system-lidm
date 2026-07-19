@@ -89,6 +89,27 @@ export const authController = new Elysia({ prefix: "/auth" })
       return success({ message: "Logged out successfully" });
     }
   )
+  // ── POST /auth/forgot-password ─────────────────────────────────────────────
+  .post(
+    "/forgot-password",
+    // Placeholder endpoint: menerima email dan mengembalikan pesan sukses.
+    // Implementasi pengiriman email akan ditambahkan kemudian.
+    async ({ body }) => {
+      logger.info({ email: body.email }, "Forgot password request received");
+      // Placeholder: di masa depan, endpoint ini akan mengirim email reset password
+      // atau notifikasi ke admin. Saat ini hanya acknowledgment.
+      return success({
+        message:
+          "Permintaan reset password telah diterima. Silakan hubungi administrator sekolah untuk mereset password Anda.",
+      });
+    },
+    {
+      // Validasi body: email (string) wajib diisi
+      body: t.Object({
+        email: t.String(),
+      }),
+    }
+  )
   // ── Middleware: requireAuth (JWT verification) ─────────────────────────────
   .use(requireAuth)
   // ── GET /auth/me ───────────────────────────────────────────────────────────

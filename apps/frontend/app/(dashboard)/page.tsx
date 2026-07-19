@@ -1,3 +1,37 @@
+/**
+ * Dashboard Page — LSAR Frontend
+ * ================================
+ * Cara Kerja:
+ * 1. Halaman ini adalah Client Component yang menampilkan ringkasan dashboard.
+ * 2. useEffect memanggil refresh() saat mount untuk fetch data dari /dashboard/summary.
+ * 3. refresh() menggunakan api.handleResponse() untuk memproses response.
+ * 4. Data ditampilkan dalam beberapa section:
+ *    - Welcome Banner (sapaan + info tahun ajaran aktif)
+ *    - Statistik Utama (total siswa, kelas, tahun, draft AI)
+ *    - Akses Cepat (link ke halaman penting)
+ *    - Kelas yang Diampu (daftar kelas dengan jumlah siswa)
+ *    - Tugas & Pengingat (rekomendasi aksi guru)
+ *    - Aktivitas Terakhir (riwayat sistem)
+ *    - AI Insight Banner (promosi fitur AI)
+ *
+ * Alur:
+ * - Komponen mount → useEffect → refresh() → GET /dashboard/summary
+ * - Loading state: spinner di tengah
+ * - Error state: pesan merah + tombol "Coba Lagi"
+ * - Empty state: pesan "Tidak ada data dashboard"
+ * - Sukses: render semua section dengan data dari API
+ *
+ * Sub Components:
+ * - StatCard: menampilkan metrik dengan ikon, label, dan nilai.
+ * - QuickAccessCard: kartu link cepat ke halaman tertentu.
+ * - ActivityItem: item aktivitas dengan ikon, teks, waktu, dan tag.
+ *
+ * Logger:
+ * - Log info saat fetch data dashboard.
+ * - Log error jika fetch gagal.
+ * - Log warn jika data kosong.
+ */
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -14,38 +48,99 @@ import {
   Clock,
   ArrowRight,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { DashboardSummary } from "@/types";
+import { formatRelativeTime } from "@/lib/utils";
+import type { DashboardSummary, ActivityItem } from "@/types";
+import { logger } from "@/lib/logger";
 
+/**
+ * DashboardPage — Halaman utama setelah login.
+ * Menampilkan ringkasan data akademik dan akses cepat.
+ *
+ * @returns JSX halaman dashboard dengan beberapa section.
+ */
 export default function DashboardPage() {
+  /** Data dashboard dari API — null saat loading */
   const [data, setData] = useState<DashboardSummary | null>(null);
+  /** Indikator loading */
   const [loading, setLoading] = useState(true);
+  /** Pesan error — null jika tidak ada error */
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * refresh — Fetch data dashboard dari API.
+   * Menggunakan api.handleResponse() untuk unwrap response otomatis.
+   */
   function refresh() {
+    logger.info("DashboardPage", "Fetching dashboard summary");
     setLoading(true);
     setError(null);
     api.handleResponse(api.get<DashboardSummary>("/dashboard/summary"))
-      .then((data) => setData(data))
-      .catch((err) => setError(err.message || "Gagal memuat data dashboard"))
+      .then((responseData) => {
+        setData(responseData);
+        logger.info("DashboardPage", "Dashboard data loaded", {
+          totalStudents: responseData.totalStudents,
+          totalClasses: responseData.totalClasses,
+          activeYear: responseData.activeYear,
+        });
+      })
+      .catch((err) => {
+        const errorMsg = err.message || "Gagal memuat data dashboard";
+        logger.error("DashboardPage", "Failed to load dashboard data", { error: errorMsg });
+        setError(errorMsg);
+      })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { refresh(); }, []);
+  /** Data aktivitas dari API /activity — empty array saat loading atau error */
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  /** Indikator loading aktivitas */
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
 
+  /**
+   * fetchActivities — Fetch data aktivitas terbaru dari /activity.
+   * Jika gagal, hanya log error dan biarkan activities sebagai array kosong.
+   */
+  function fetchActivities() {
+    logger.info("DashboardPage", "Fetching recent activities");
+    setActivitiesLoading(true);
+    api.handleResponse(api.get<ActivityItem[]>("/dashboard/activity"))
+      .then((responseData) => {
+        setActivities(responseData);
+        logger.info("DashboardPage", "Activities loaded", { count: responseData.length });
+      })
+      .catch((err) => {
+        logger.error("DashboardPage", "Failed to load activities", { error: err.message });
+        // Silent fail — tampilkan section kosong
+        setActivities([]);
+      })
+      .finally(() => setActivitiesLoading(false));
+  }
+
+  /* Fetch data saat komponen mount — sekali saja (dependency []) */
+  useEffect(() => {
+    refresh();
+    fetchActivities();
+  }, []);
+
+  /* ── Loading State ──────────────────────────────────────── */
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
+        {/* Spinner animasi */}
         <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
       </div>
     );
   }
 
+  /* ── Error State ────────────────────────────────────────── */
   if (error) {
     return (
       <div className="text-center py-12 text-red-500">
         <p>{error}</p>
+        {/* Tombol retry — panggil refresh() lagi */}
         <button
           onClick={refresh}
           className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
@@ -56,7 +151,9 @@ export default function DashboardPage() {
     );
   }
 
+  /* ── Empty State ────────────────────────────────────────── */
   if (!data) {
+    logger.warn("DashboardPage", "No dashboard data available");
     return (
       <div className="text-center py-12 text-gray-500">
         Tidak ada data dashboard
@@ -64,13 +161,17 @@ export default function DashboardPage() {
     );
   }
 
+  /* ── Render Dashboard ───────────────────────────────────── */
   return (
     <div className="space-y-6">
-      {/* Welcome Banner */}
+      {/* ── Welcome Banner ──────────────────────────────────── */}
+      {/* Gradient banner biru dengan teks sambutan dan tombol aksi */}
       <div className="relative bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 rounded-2xl p-6 md:p-8 text-white overflow-hidden shadow-sm">
+        {/* Elemen dekoratif bundar di pojok */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/3 translate-x-1/3" />
         <div className="absolute bottom-0 right-20 w-40 h-40 bg-white/5 rounded-full translate-y-1/2" />
         <div className="relative">
+          {/* Badge tahun ajaran aktif — hanya tampil jika ada data.activeYear */}
           {data.activeYear && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/15 rounded-full text-xs font-medium mb-3">
               <Sparkles className="w-3 h-3" />
@@ -80,10 +181,12 @@ export default function DashboardPage() {
           <h1 className="text-2xl md:text-3xl font-bold">Selamat Datang Kembali! 👋</h1>
           <p className="text-blue-100 mt-2 text-sm max-w-xl leading-relaxed">
             Platform LSAR siap membantu Anda mengelola data akademik siswa.
+            {/* Info draft AI yang perlu review — conditional */}
             {data.pendingAiDrafts && data.pendingAiDrafts > 0 && (
               <> Ada <strong>{data.pendingAiDrafts} draft AI</strong> yang perlu ditinjau.</>
             )}
           </p>
+          {/* Tombol aksi banner */}
           <div className="flex gap-3 mt-5">
             <Link
               href="/ml"
@@ -102,14 +205,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* ── Statistik Utama ──────────────────────────────────── */}
       <div>
+        {/* Header section dengan label "Real-time" */}
         <div className="flex items-center gap-2 mb-3">
           <h2 className="text-base font-semibold text-gray-900">Statistik Utama</h2>
           <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded-full uppercase tracking-wider">
             Real-time
           </span>
         </div>
+        {/* Grid 2 kolom mobile, 4 kolom desktop */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             icon={Users}
@@ -118,6 +223,7 @@ export default function DashboardPage() {
             iconBg="bg-blue-50"
             iconColor="text-blue-500"
           />
+          {/* Total Kelas — hanya tampil jika ada data dari API */}
           {data.totalClasses !== undefined && (
             <StatCard
               icon={TrendingUp}
@@ -135,6 +241,7 @@ export default function DashboardPage() {
             iconColor="text-amber-500"
             isText
           />
+          {/* Draft AI pending — hanya tampil jika ada data dari API */}
           {data.pendingAiDrafts !== undefined && (
             <StatCard
               icon={Sparkles}
@@ -148,11 +255,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick Access */}
+      {/* ── Akses Cepat ──────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-gray-900">Akses Cepat</h2>
         </div>
+        {/* Grid 2 kolom mobile, 4 kolom desktop */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <QuickAccessCard
             href="/students"
@@ -182,10 +290,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ── Grid Bawah: 2/3 kiri + 1/3 kanan ────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Tugas & Pengingat */}
+        {/* Kolom Kiri (2/3) */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Managed Classes */}
+          {/* Kelas yang Diampu — hanya tampil jika ada data managedClasses */}
           {data.managedClasses && data.managedClasses.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 p-5">
               <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
@@ -193,12 +302,15 @@ export default function DashboardPage() {
                 Kelas yang Diampu
               </h3>
               <div className="space-y-2">
+                {/* Iterasi daftar kelas yang diampu guru */}
                 {data.managedClasses.map((cls) => (
                   <div
                     key={cls.id}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                   >
+                    {/* Nama kelas */}
                     <span className="text-sm font-medium text-gray-900">{cls.name}</span>
+                    {/* Jumlah siswa di kelas */}
                     <span className="text-xs text-gray-500 font-medium">
                       {cls._count?.students || 0} siswa
                     </span>
@@ -215,6 +327,7 @@ export default function DashboardPage() {
               Tugas & Pengingat
             </h3>
             <div className="space-y-2">
+              {/* Item prioritas — lengkapi data semester */}
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-red-500" />
@@ -222,6 +335,7 @@ export default function DashboardPage() {
                 </div>
                 <span className="text-xs text-gray-400 font-medium">Prioritas</span>
               </div>
+              {/* Item opsional — review draft AI */}
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-green-500" />
@@ -233,23 +347,43 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Right Column */}
+        {/* Kolom Kanan (1/3) */}
         <div className="space-y-6">
           {/* Aktivitas Terakhir */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <h3 className="text-sm font-semibold text-gray-900 mb-1">Aktivitas Terakhir</h3>
             <p className="text-xs text-gray-400 mb-3">Riwayat pembaruan data terbaru</p>
-            <div className="space-y-3">
-              <ActivityItem text="Sistem siap digunakan" time="Baru saja" tag="SISTEM" tagColor="blue" />
-              <ActivityItem text="Data tahun ajaran diperbarui" time="Otomatis" tag="INFO" tagColor="green" />
-            </div>
+            {/* Loading state: spinner kecil */}
+            {activitiesLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+              </div>
+            ) : activities.length === 0 ? (
+              /* Empty state: tidak ada aktivitas */
+              <p className="text-xs text-gray-400 text-center py-6">Belum ada aktivitas</p>
+            ) : (
+              /* Daftar aktivitas dari API */
+              <div className="space-y-3">
+                {activities.map((activity) => (
+                  <ActivityItem
+                    key={activity.id}
+                    text={activity.description}
+                    time={formatRelativeTime(activity.timestamp)}
+                    tag={getActionTag(activity.action)}
+                    tagColor={getActionTagColor(activity.action)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* AI Insight Banner */}
+      {/* ── AI Insight Banner ────────────────────────────────── */}
+      {/* Banner promosi fitur AI di bagian bawah dashboard */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
+          {/* Ikon sparkles di container transparan */}
           <div className="w-10 h-10 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
@@ -260,6 +394,7 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+        {/* Tombol link ke halaman AI */}
         <Link
           href="/ml"
           className="shrink-0 px-4 py-2 bg-white text-blue-600 text-sm font-semibold rounded-lg hover:bg-blue-50 transition-colors shadow-sm"
@@ -271,8 +406,21 @@ export default function DashboardPage() {
   );
 }
 
-/* ── Sub Components ──────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════ */
+/*  SUB COMPONENTS                                               */
+/* ════════════════════════════════════════════════════════════════ */
 
+/**
+ * StatCard — Kartu statistik dengan ikon, label, dan nilai.
+ *
+ * @param icon — Komponen ikon (lucide-react).
+ * @param label — Label teks di atas nilai (contoh: "Total Siswa").
+ * @param value — Nilai numerik atau teks (contoh: 150, "2024/2025").
+ * @param iconBg — Class Tailwind untuk background ikon.
+ * @param iconColor — Class Tailwind untuk warna ikon.
+ * @param subtitle — Teks tambahan di bawah nilai (opsional).
+ * @param isText — Jika true, gunakan font lebih kecil untuk nilai teks.
+ */
 function StatCard({
   icon: Icon,
   label,
@@ -292,20 +440,33 @@ function StatCard({
 }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+      {/* Ikon dengan background berwarna */}
       <div className="flex items-center justify-between mb-3">
         <div className={`w-9 h-9 rounded-lg ${iconBg} flex items-center justify-center`}>
           <Icon className={`w-[18px] h-[18px] ${iconColor}`} />
         </div>
       </div>
+      {/* Label (uppercase, tracking-wider) */}
       <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
+      {/* Nilai — large atau sedang tergantung isText */}
       <p className={`font-bold text-gray-900 mt-0.5 ${isText ? "text-lg" : "text-2xl"}`}>
         {value}
       </p>
+      {/* Subtitle opsional — informasi tambahan */}
       {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
     </div>
   );
 }
 
+/**
+ * QuickAccessCard — Kartu link cepat ke halaman lain.
+ *
+ * @param href — Route tujuan (Link href).
+ * @param icon — Komponen ikon (lucide-react).
+ * @param title — Judul kartu.
+ * @param description — Deskripsi singkat.
+ * @param primary — Jika true, tampilkan gaya biru (highlight).
+ */
 function QuickAccessCard({
   href,
   icon: Icon,
@@ -322,12 +483,14 @@ function QuickAccessCard({
   return (
     <Link
       href={href}
+      /* Gaya berbeda untuk primary (blue) vs default (white) */
       className={`rounded-xl p-4 transition-all hover:shadow-md group border ${
         primary
           ? "bg-blue-50/50 border-blue-100 hover:border-blue-200"
           : "bg-white border-gray-100 hover:border-gray-200"
       }`}
     >
+      {/* Ikon — blue solid untuk primary, gray untuk default */}
       <div
         className={`w-9 h-9 rounded-lg flex items-center justify-center mb-3 ${
           primary ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500 group-hover:bg-gray-200"
@@ -335,14 +498,52 @@ function QuickAccessCard({
       >
         <Icon className="w-[18px] h-[18px]" />
       </div>
+      {/* Judul */}
       <h3 className={`text-sm font-semibold ${primary ? "text-blue-700" : "text-gray-900"}`}>
         {title}
       </h3>
+      {/* Deskripsi */}
       <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{description}</p>
     </Link>
   );
 }
 
+/**
+ * getActionTag — Mapping action code ke label tag yang user-friendly.
+ *
+ * @param action — Kode aksi dari API (e.g. "AI_DRAFT_CREATED", "TEACHER_CHANGED").
+ * @returns Label tag pendek untuk display.
+ */
+function getActionTag(action: string): string {
+  const map: Record<string, string> = {
+    AI_DRAFT_CREATED: "AI",
+    TEACHER_CHANGED: "KELAS",
+  };
+  return map[action] || "SISTEM";
+}
+
+/**
+ * getActionTagColor — Mapping action code ke warna tag.
+ *
+ * @param action — Kode aksi dari API.
+ * @returns Nama warna: "blue" | "green" | "red" | "amber".
+ */
+function getActionTagColor(action: string): string {
+  const map: Record<string, string> = {
+    AI_DRAFT_CREATED: "blue",
+    TEACHER_CHANGED: "amber",
+  };
+  return map[action] || "green";
+}
+
+/**
+ * ActivityItem — Item aktivitas dalam daftar riwayat.
+ *
+ * @param text — Teks aktivitas.
+ * @param time — Waktu relatif (contoh: "Baru saja", "2 jam lalu").
+ * @param tag — Label tag (contoh: "SISTEM", "INFO").
+ * @param tagColor — Warna tag: "blue" | "green" | "red" | "amber".
+ */
 function ActivityItem({
   text,
   time,
@@ -354,6 +555,7 @@ function ActivityItem({
   tag: string;
   tagColor: string;
 }) {
+  /* Mapping warna tag ke class Tailwind */
   const colors: Record<string, string> = {
     blue: "bg-blue-100 text-blue-600",
     green: "bg-green-100 text-green-600",
@@ -362,13 +564,17 @@ function ActivityItem({
   };
   return (
     <div className="flex items-start gap-3">
+      {/* Ikon lingkaran dengan AlertCircle */}
       <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 mt-0.5">
         <AlertCircle className="w-3.5 h-3.5 text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
+        {/* Teks aktivitas */}
         <p className="text-sm text-gray-700">{text}</p>
+        {/* Waktu + Tag */}
         <div className="flex items-center gap-2 mt-1">
           <span className="text-[10px] text-gray-400">{time}</span>
+          {/* Tag dengan warna dinamis, fallback ke biru */}
           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${colors[tagColor] || colors.blue}`}>
             {tag}
           </span>

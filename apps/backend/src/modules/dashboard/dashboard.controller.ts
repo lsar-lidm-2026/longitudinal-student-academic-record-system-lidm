@@ -22,6 +22,7 @@ import { Elysia } from "elysia";
 import logger from "../../lib/logger";
 import { checkRole } from "../../middleware/role";
 import * as service from "./dashboard.service";
+import type { ActivityItem } from "./dashboard.service";
 import { success } from "../../common/response";
 import { requireAuth } from "../../middleware/auth";
 
@@ -50,6 +51,14 @@ export const dashboardController = new Elysia({ prefix: "/dashboard" })
         logger.info({ userId: user.userId, role: user.role }, "Fetching administrative status");
         const data = await service.getAdministrativeStatus(user.userId, user.role);
         logger.info({ userId: user.userId, classCount: data.length }, "Administrative status fetched successfully");
+        return success(data);
+      })
+      // GET /activity — Aktivitas terbaru dari seluruh sistem
+      .get("/activity", async ({ user }) => {
+        checkRole(user, "ADMINISTRATOR", "OPERATOR_SEKOLAH", "GURU", "KEPALA_SEKOLAH");
+        logger.info({ userId: user.userId, role: user.role }, "Fetching recent activities");
+        const data: ActivityItem[] = await service.getActivities(user.userId, user.role);
+        logger.info({ userId: user.userId, count: data.length }, "Activities fetched successfully");
         return success(data);
       })
   );

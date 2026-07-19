@@ -59,7 +59,9 @@ import { aiSummaryController } from "./modules/ai/ai-summary.controller";
 import { mlController } from "./modules/ml/ml.controller";
 import { usersController } from "./modules/users/users.controller";
 import { chatbotController } from "./modules/chatbot/chatbot.controller";
+import { activityController } from "./modules/activity/activity.controller";
 import { uploadController } from "./modules/upload/upload.controller";
+import { teacherNoteController, teacherNoteUpdateController } from "./modules/teacher-notes/teacher-note.controller";
 import { checkDbHealth } from "./lib/prisma";
 import { trainModels } from "./modules/ml/trainer";
 import { getModels } from "./modules/ml/ml.service";
@@ -179,6 +181,7 @@ const app = new Elysia()
       .use(attendanceController)
       // .use(achievementController)
       .use(healthRecordController)
+      .use(activityController)
       .use(profileController)
       .use(bukuIndukController)
       .use(dashboardController)
@@ -188,6 +191,8 @@ const app = new Elysia()
       .use(usersController)
       .use(uploadController)
       .use(chatbotController)
+      .use(teacherNoteController)
+      .use(teacherNoteUpdateController)
   )
   // Start server pada port dari konfigurasi environment
   .listen(env.port);

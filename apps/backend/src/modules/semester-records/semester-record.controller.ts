@@ -138,6 +138,17 @@ export const semesterRecordSubController = new Elysia({ prefix: "/semester-recor
       .use(requireAuth)
       .use(requireHomeroomAccess)
 
+      // GET /semester-records/:id — get single semester record by ID with all sub-resources
+      .get(
+        "/:id",
+        async ({ params }) => {
+          logger.info({ recordId: params.id }, "Getting semester record by ID");
+          const data = await service.getById(params.id);
+          logger.info({ recordId: params.id }, "Semester record fetched successfully");
+          return success(data);
+        }
+      )
+
       // ===================== Subject Scores =====================
       // PUT /semester-records/:id/subject-scores — upsert a single subject score
       .put(

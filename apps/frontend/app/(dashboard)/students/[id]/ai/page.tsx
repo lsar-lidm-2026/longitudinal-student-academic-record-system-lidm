@@ -1,5 +1,33 @@
 "use client";
 
+/**
+ * Cara kerja file (How this file works):
+ * =======================================
+ * Halaman AI Assistant membantu guru menyusun narasi rapor siswa secara
+ * otomatis menggunakan AI. Dua jenis output:
+ * 1. Ringkasan Catatan Wali Kelas (summary) — narasi menyeluruh.
+ * 2. Deskripsi Kompetensi (draft-description) — teks per mata pelajaran.
+ *
+ * Alur lengkap:
+ * 1. Saat mount, fetchRecords() mengambil daftar semester records siswa.
+ *    Semester pertama dipilih sebagai default.
+ * 2. Saat selectedRecord berubah, useEffect mengambil riwayat AI summaries
+ *    untuk semester record tersebut via /semester-records/:id/ai-summaries.
+ * 3. Setiap summary memiliki version, isFinal (boolean), dan content.
+ *    Draft yang belum final dapat diedit di textarea.
+ * 4. User dapat:
+ *    - Generate: membuat summary baru via POST /ai/students/:id/summary
+ *      atau /ai/students/:id/draft-description.
+ *    - Regenerate: membuat versi baru dari summary yang sudah ada.
+ *    - Edit draft: mengubah teks di textarea (disimpan lokal).
+ *    - Save Draft: menyimpan perubahan ke backend.
+ *    - Finalisasi: mengunci konten (isFinal = true) — tidak bisa diedit lagi.
+ * 5. Disclaimer: hasil AI wajib direview guru sebelum finalisasi.
+ *
+ * Human-in-the-loop: semua konten AI adalah draft awal. Finalisasi hanya
+ * bisa dilakukan oleh guru setelah review.
+ */
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -17,76 +45,116 @@ import {
   Save,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import type { AiSummary, SemesterRecord } from "@/types";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
+/** Jenis konten AI: summary (catatan wali kelas) atau draft-description (deskripsi mapel) */
 type AiType = "summary" | "draft-description";
 
 export default function AiAssistantPage() {
+  /** ID siswa dari URL parameter */
   const params = useParams();
 
+  /** Daftar semester records untuk dropdown pilih semester */
   const [records, setRecords] = useState<SemesterRecord[]>([]);
+  /** Loading state untuk fetch records */
   const [loadingRecords, setLoadingRecords] = useState(true);
+  /** Semester record yang dipilih (ID) */
   const [selectedRecord, setSelectedRecord] = useState("");
 
+  /** Daftar AI summaries untuk semester record yang dipilih */
   const [summaries, setSummaries] = useState<AiSummary[]>([]);
+  /** Loading state untuk fetch summaries */
   const [loadingSummaries, setLoadingSummaries] = useState(false);
 
-  // States for generation & saving
+  // ── States for generation & saving ────────────────────────────────────
+  /** Sedang melakukan generate/regenerate */
   const [generating, setGenerating] = useState(false);
+  /** ID summary yang sedang di-save draft-nya */
   const [savingId, setSavingId] = useState<string | null>(null);
+  /** ID summary yang sedang di-finalisasi */
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
 
-  // Store editable content for drafts
+  /** Store konten draft yang diedit — key = summary ID, value = teks */
   const [draftContent, setDraftContent] = useState<Record<string, string>>({});
 
+  /**
+   * fetchRecords — Mengambil daftar semester records siswa.
+   * Record pertama dipilih sebagai default.
+   */
   function fetchRecords() {
     setLoadingRecords(true);
+    logger.info("AiAssistantPage", "Mengambil daftar semester records", { studentId: params.id });
     api
       .handleResponse(api.get<SemesterRecord[]>(`/students/${params.id}/semester-records`))
       .then((data) => {
         setRecords(data);
         if (data.length > 0) setSelectedRecord(data[0].id);
+        logger.info("AiAssistantPage", "Semester records berhasil dimuat", { count: data.length });
       })
-      .catch((err) => toast.error(err.message ?? "Gagal memuat data semester"))
+      .catch((err) => {
+        logger.error("AiAssistantPage", "Gagal memuat semester records", { err });
+        toast.error(err.message ?? "Gagal memuat data semester");
+      })
       .finally(() => setLoadingRecords(false));
   }
 
+  /** Fetch records saat mount */
   useEffect(() => {
     fetchRecords();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
+  /**
+   * useEffect — Saat selectedRecord berubah, ambil riwayat AI summaries.
+   * Juga inisialisasi draftContent untuk summary yang belum final.
+   */
   useEffect(() => {
     if (!selectedRecord) return;
     setLoadingSummaries(true);
+    logger.info("AiAssistantPage", "Mengambil AI summaries", { selectedRecord });
     api
       .handleResponse(api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`))
       .then((data) => {
         setSummaries(data);
-        // Initialize draft content for any non-final summaries
+        // Inisialisasi draft content untuk setiap summary yang belum final
         const initialDrafts: Record<string, string> = {};
         data.forEach((s) => {
           if (!s.isFinal) initialDrafts[s.id] = s.content;
         });
         setDraftContent(initialDrafts);
+        logger.info("AiAssistantPage", "AI summaries berhasil dimuat", { count: data.length });
       })
-      .catch((err) => toast.error(err.message ?? "Gagal memuat riwayat AI"))
+      .catch((err) => {
+        logger.error("AiAssistantPage", "Gagal memuat AI summaries", { err });
+        toast.error(err.message ?? "Gagal memuat riwayat AI");
+      })
       .finally(() => setLoadingSummaries(false));
   }, [selectedRecord]);
 
-  // Helpers to get the latest summary for a specific type
+  /**
+   * getLatestSummary — Mendapatkan summary terbaru (versi tertinggi) untuk tipe tertentu.
+   * @param type - Tipe summary: STUDENT_SUMMARY atau DRAFT_DESCRIPTION
+   * @returns AiSummary terbaru, atau null jika tidak ada
+   */
   const getLatestSummary = (type: "STUDENT_SUMMARY" | "DRAFT_DESCRIPTION") => {
     const filtered = summaries.filter((s) => s.summaryType === type);
     if (filtered.length === 0) return null;
-    // Sort by version descending
+    // Sort by version descending, ambil yang paling atas
     return filtered.sort((a, b) => b.version - a.version)[0];
   };
 
+  /**
+   * handleGenerate — Meminta AI untuk membuat konten baru.
+   * @param aiType - Jenis konten: "summary" atau "draft-description"
+   */
   async function handleGenerate(aiType: AiType) {
     if (!selectedRecord || generating) return;
     setGenerating(true);
+    logger.info("AiAssistantPage", "Generate AI konten", { aiType, selectedRecord });
 
+    // Map AiType ke endpoint API yang sesuai
     const endpointMap: Record<AiType, string> = {
       summary: `/ai/students/${params.id}/summary`,
       "draft-description": `/ai/students/${params.id}/draft-description`,
@@ -96,74 +164,102 @@ export default function AiAssistantPage() {
       const data = await api.handleResponse(
         api.post<AiSummary>(endpointMap[aiType], { semesterRecordId: selectedRecord })
       );
-      setSummaries((prev) => [data, ...prev]);
+      setSummaries((prev) => [data, ...prev]); // Tambahkan ke awal array
       setDraftContent((prev) => ({ ...prev, [data.id]: data.content }));
+      logger.info("AiAssistantPage", "Konten AI berhasil dibuat", { summaryId: data.id });
       toast.success("Konten AI berhasil dibuat!");
     } catch (err: any) {
+      logger.error("AiAssistantPage", "Gagal generate AI", { err });
       toast.error(err.message ?? "Gagal generate AI");
     } finally {
       setGenerating(false);
     }
   }
 
+  /**
+   * handleRegenerate — Membuat versi baru dari summary yang sudah ada.
+   * @param summaryId - ID summary yang akan diregenerate
+   */
   async function handleRegenerate(summaryId: string) {
     if (generating) return;
     setGenerating(true);
+    logger.info("AiAssistantPage", "Regenerate AI konten", { summaryId });
     try {
       const data = await api.handleResponse(
         api.post<AiSummary>(`/ai-summaries/${summaryId}/regenerate`)
       );
-      setSummaries((prev) => [data, ...prev]);
+      setSummaries((prev) => [data, ...prev]); // Versi baru ditambahkan ke awal
       setDraftContent((prev) => ({ ...prev, [data.id]: data.content }));
+      logger.info("AiAssistantPage", "Regenerate berhasil", { newSummaryId: data.id, version: data.version });
       toast.success("Versi baru berhasil dibuat!");
     } catch (err: any) {
+      logger.error("AiAssistantPage", "Gagal regenerate AI", { err });
       toast.error(err.message ?? "Gagal regenerate AI");
     } finally {
       setGenerating(false);
     }
   }
 
+  /**
+   * handleSaveDraft — Menyimpan perubahan teks draft ke backend.
+   * @param summary - Summary yang akan di-save draft-nya
+   */
   async function handleSaveDraft(summary: AiSummary) {
     setSavingId(summary.id);
+    logger.info("AiAssistantPage", "Menyimpan draft", { summaryId: summary.id });
     try {
       const updated = await api.handleResponse(
         api.put<AiSummary>(`/ai-summaries/${summary.id}`, { content: draftContent[summary.id] })
       );
+      // Update summary di state lokal
       setSummaries((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      logger.info("AiAssistantPage", "Draft berhasil disimpan", { summaryId: summary.id });
       toast.success("Draft berhasil disimpan");
     } catch (err: any) {
+      logger.error("AiAssistantPage", "Gagal menyimpan draft", { err });
       toast.error(err.message ?? "Gagal menyimpan draft");
     } finally {
       setSavingId(null);
     }
   }
 
+  /**
+   * handleFinalize — Memfinalisasi konten (isFinal = true).
+   * Setelah final, konten tidak bisa diedit lagi.
+   * @param summary - Summary yang akan difinalisasi
+   */
   async function handleFinalize(summary: AiSummary) {
     setFinalizingId(summary.id);
+    logger.info("AiAssistantPage", "Finalisasi konten AI", { summaryId: summary.id });
     try {
-      // Ensure the latest edited content is saved during finalization
+      // Kirim konten terbaru (dari draftContent) + isFinal = true
       await api.handleResponse(
         api.put<AiSummary>(`/ai-summaries/${summary.id}`, {
           content: draftContent[summary.id] || summary.content,
           isFinal: true,
         })
       );
-      // Refresh summaries to reflect final state
+      // Refresh summaries untuk mendapatkan state final terbaru
       const data = await api.handleResponse(
         api.get<AiSummary[]>(`/semester-records/${selectedRecord}/ai-summaries`)
       );
       setSummaries(data);
+      logger.info("AiAssistantPage", "Konten berhasil difinalisasi", { summaryId: summary.id });
       toast.success("Konten berhasil difinalisasi!");
     } catch (err: any) {
+      logger.error("AiAssistantPage", "Gagal finalisasi konten", { err });
       toast.error(err.message ?? "Gagal memfinalisasi konten");
     } finally {
       setFinalizingId(null);
     }
   }
 
+  /** Summary terbaru untuk tipe STUDENT_SUMMARY (Catatan Wali Kelas) */
   const latestSummary = getLatestSummary("STUDENT_SUMMARY");
+  /** Summary terbaru untuk tipe DRAFT_DESCRIPTION (Deskripsi Kompetensi) */
   const latestDraft = getLatestSummary("DRAFT_DESCRIPTION");
 
+  // ── Loading State ──────────────────────────────────────────────────
   if (loadingRecords) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -194,7 +290,8 @@ export default function AiAssistantPage() {
             Bantu susun narasi rapor siswa berdasarkan nilai dan absensi secara otomatis.
           </p>
         </div>
-        
+
+        {/* Dropdown pilih semester — hanya muncul jika ada records */}
         {records.length > 0 ? (
           <div className="w-full sm:w-64">
             <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
@@ -219,6 +316,7 @@ export default function AiAssistantPage() {
         )}
       </div>
 
+      {/* Tabs hanya muncul jika ada records */}
       {records.length > 0 && (
         <Tabs defaultValue="summary" className="w-full">
           <TabsList className="mb-4">
@@ -273,6 +371,7 @@ export default function AiAssistantPage() {
       )}
 
       {/* ── Disclaimer ───────────────────────────────────────────── */}
+      {/* Peringatan bahwa hasil AI harus direview guru sebelum finalisasi */}
       <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl">
         <AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
         <p className="text-xs text-blue-800 leading-relaxed">
@@ -284,6 +383,30 @@ export default function AiAssistantPage() {
 }
 
 // ── Komponen Pembantu untuk menampilkan Konten AI ──────────────
+
+/**
+ * AiContentPanel — Panel yang menampilkan konten AI beserta editor dan aksi.
+ * Kondisi yang di-handle:
+ * - loading: spinner
+ * - summary null: tombol "Generate AI Sekarang"
+ * - isDraft = true: textarea yang bisa diedit + tombol save draft & finalisasi
+ * - isDraft = false: read-only view
+ *
+ * @param title - Judul panel (e.g., "Catatan Wali Kelas")
+ * @param description - Deskripsi singkat untuk empty state
+ * @param aiType - Jenis konten (summary / draft-description)
+ * @param summary - AiSummary terbaru (atau null)
+ * @param draftContent - Map ID -> teks draft yang sedang diedit
+ * @param setDraftContent - Setter untuk draftContent
+ * @param loading - Loading state summaries
+ * @param generating - Loading state generate/regenerate
+ * @param savingId - ID summary yang sedang di-save
+ * @param finalizingId - ID summary yang sedang di-finalisasi
+ * @param onGenerate - Callback generate konten baru
+ * @param onRegenerate - Callback regenerate versi baru
+ * @param onSaveDraft - Callback simpan draft
+ * @param onFinalize - Callback finalisasi konten
+ */
 function AiContentPanel({
   title,
   description,
@@ -315,6 +438,7 @@ function AiContentPanel({
   onSaveDraft: (s: AiSummary) => void;
   onFinalize: (s: AiSummary) => void;
 }) {
+  // ── Loading State ────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="bg-white border border-gray-100 rounded-xl p-12 flex flex-col items-center justify-center min-h-[300px]">
@@ -324,7 +448,7 @@ function AiContentPanel({
     );
   }
 
-  // JIKA BELUM ADA KONTEN SAMA SEKALI
+  // ── Empty State: BELUM ADA KONTEN ────────────────────────────────
   if (!summary) {
     return (
       <div className="bg-white border-2 border-dashed border-gray-200 rounded-xl p-10 flex flex-col items-center justify-center min-h-[300px] text-center">
@@ -343,32 +467,39 @@ function AiContentPanel({
     );
   }
 
+  /** Apakah summary masih dalam status draft? */
   const isDraft = !summary.isFinal;
+  /** Konten yang akan ditampilkan: draftContent (jika diedit) atau original content */
   const contentValue = isDraft ? (draftContent[summary.id] ?? summary.content) : summary.content;
+  /** Apakah ada perubahan yang belum disimpan? */
   const isChanged = isDraft && draftContent[summary.id] !== summary.content;
 
-  // JIKA SUDAH ADA KONTEN (DRAFT ATAU FINAL)
+  // ── Content State: SUDAH ADA KONTEN (DRAFT ATAU FINAL) ───────────
   return (
     <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-      {/* Header status */}
+      {/* Header status: badge Draft/Final + versi + tombol aksi */}
       <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {isDraft ? (
+            /* Badge Draft — kuning dengan animasi pulse */
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-700 rounded-md text-xs font-bold uppercase tracking-wider">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               Status: Draft
             </span>
           ) : (
+            /* Badge Final — hijau dengan icon check */
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 rounded-md text-xs font-bold uppercase tracking-wider">
               <Check className="w-3.5 h-3.5" />
               Telah Difinalisasi
             </span>
           )}
+          {/* Nomor versi */}
           <span className="text-xs text-gray-500 font-medium border-l border-gray-300 pl-3">
             Versi {summary.version}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Tombol Buat Ulang (Regenerate) — hanya untuk draft */}
           {isDraft && (
             <button
               onClick={() => onRegenerate(summary.id)}
@@ -379,6 +510,7 @@ function AiContentPanel({
               Buat Ulang
             </button>
           )}
+          {/* Tombol Salin Teks ke clipboard */}
           <button
             onClick={() => {
               navigator.clipboard.writeText(contentValue);
@@ -392,9 +524,10 @@ function AiContentPanel({
         </div>
       </div>
 
-      {/* Editor / Viewer Area */}
+      {/* ── Editor / Viewer Area ────────────────────────────────────── */}
       <div className="p-5">
         {isDraft ? (
+          /* Mode draft: textarea yang bisa diedit */
           <div className="space-y-3">
             <p className="text-sm text-gray-600 font-medium">
               Silakan periksa dan sesuaikan teks di bawah ini sebelum melakukan finalisasi:
@@ -409,15 +542,17 @@ function AiContentPanel({
             />
           </div>
         ) : (
+          /* Mode final: read-only view dengan whitespace preserved */
           <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700 leading-relaxed whitespace-pre-wrap min-h-[200px]">
             {contentValue}
           </div>
         )}
       </div>
 
-      {/* Footer Actions (Only for Drafts) */}
+      {/* ── Footer Actions (Only for Drafts) ────────────────────────── */}
       {isDraft && (
         <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+          {/* Indikator perubahan */}
           <p className="text-xs text-gray-500">
             {isChanged ? (
               <span className="text-amber-600 font-medium flex items-center gap-1">
@@ -428,6 +563,7 @@ function AiContentPanel({
             )}
           </p>
           <div className="flex w-full sm:w-auto gap-2">
+            {/* Tombol Simpan Draft — disabled jika tidak ada perubahan */}
             <button
               onClick={() => onSaveDraft(summary)}
               disabled={savingId === summary.id || !isChanged}
@@ -436,6 +572,7 @@ function AiContentPanel({
               {savingId === summary.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Simpan Draft
             </button>
+            {/* Tombol Finalisasi — mengunci konten (tidak bisa diedit lagi) */}
             <button
               onClick={() => onFinalize(summary)}
               disabled={finalizingId === summary.id}
