@@ -163,6 +163,44 @@ class ApiClient {
   delete<T>(path: string) {
     return this.request<T>("DELETE", path);
   }
+
+  /**
+   * Khusus untuk request yang mengembalikan ReadableStream (SSE).
+   * Mereturn raw Response objek untuk dibaca secara bertahap oleh caller.
+   */
+  async requestStream(path: string, body?: unknown): Promise<Response> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (this.token) {
+      headers["Authorization"] = `Bearer ${this.token}`;
+    }
+
+    const res = await fetch(`${API_URL}${path}`, {
+      method: "POST",
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (res.status === 401) {
+      const refreshed = await this.ensureFreshToken();
+      if (refreshed) {
+        return this.requestStream(path, body);
+      }
+      this.setToken(null);
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      throw new Error("Sesi berakhir, silakan login ulang");
+    }
+
+    if (!res.ok) {
+      throw new Error(`Request failed with status ${res.status}`);
+    }
+
+    return res;
+  }
 }
 
 export const api = new ApiClient();

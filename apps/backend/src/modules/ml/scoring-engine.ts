@@ -1,49 +1,86 @@
 /**
- * Scoring Engine — Honest rule-based risk assessment.
- *
- * BUKAN machine learning. Ini adalah weighted scoring system yang transparent,
- * documented, dan bisa diaudit. Setiap bobot dan threshold punya justifikasi
- * berdasarkan praktik pendidikan umum.
- *
- * Kenapa nggak pake ML?
- * - Kita nggak punya ground truth labels (data historis "siswa ini beneran bermasalah").
- * - Decision tree yang dilatih pada synthetic labels cuma ngereplikasi heuristic kita.
- * - Lebih jujur pake rule-based scoring yang transparan daripada pretend ML.
+ * scoring-engine.ts
+ * 
+ * Cara kerja file ini:
+ * - Scoring Engine untuk risk assessment siswa — menggunakan rule-based weighted scoring.
+ * - BUKAN machine learning. Ini adalah sistem skoring transparan yang bisa diaudit.
+ * - Setiap faktor risiko memiliki bobot (maxPoints) dan threshold yang jelas.
+ * - Total skor 0-100: 0 = aman, 100 = kritis.
+ * 
+ * Alur lengkap evaluateRisk(input):
+ * 1. Evaluasi 5 faktor risiko secara berurutan:
+ *    a. LOW_KNOWLEDGE (max 35 pts) — nilai < 70, severity berdasarkan jarak dari 70.
+ *    b. HIGH_VOLATILITY (max 10 pts) — volatilitas > 15, severity berdasarkan selisih.
+ *    c. HIGH_ABSENCE (max 25 pts) — rata-rata alpha > 5 per semester.
+ *    d. NEGATIVE_TREND (max 20 pts) — scoreDelta < -10 (turun signifikan).
+ *    e. NO_ACHIEVEMENT (max 10 pts) — achievementCount = 0 dengan minimal 2 semester data.
+ * 2. Total skor di-clamp ke [0, 100].
+ * 3. Level ditentukan berdasarkan threshold: >= 50 = KRITIS, >= 25 = WASPADA, < 25 = AMAN.
+ * 4. Summary dibuat secara deskriptif berdasarkan faktor yang aktif.
+ * 5. Return ScoringResult { score, level, factors[], summary }.
+ * 
+ * Pedagogical rationale bobot:
+ * - Nilai akademik adalah indikator paling kuat → 35 pts
+ * - Ketidakhadiran langsung mempengaruhi pembelajaran → 25 pts
+ * - Trend negatif menunjukkan masalah berkelanjutan → 20 pts
+ * - Volatilitas bisa menunjukkan ketidakstabilan belajar → 10 pts
+ * - Kurangnya prestasi mungkin indikasi engagement rendah → 10 pts
  */
 
+import logger from "../../lib/logger";
+
+/**
+ * ScoringInput
+ * 
+ * Input yang diperlukan oleh scoring engine untuk menghitung risk score.
+ * Semua nilai numerik diekstrak dari feature vector (StudentFeatures).
+ */
 export interface ScoringInput {
   /** Rata-rata nilai pengetahuan dari semua semester (0-100) */
   avgKnowledge: number;
-  /** Standar deviasi rata-rata nilai per semester — ukur kestabilan */
+  /** Standar deviasi rata-rata nilai per semester — mengukur kestabilan performa */
   scoreVolatility: number;
   /** Total ketidakhadiran (sakit + izin + alpha) sepanjang riwayat */
   totalAbsence: number;
   /** Perubahan nilai semester terakhir vs sebelumnya (+/-) */
   scoreDelta: number;
-  /** Jumlah semester dengan data */
+  /** Jumlah semester dengan data yang tercatat */
   semesterCount: number;
-  /** Jumlah total prestasi */
+  /** Jumlah total prestasi sepanjang riwayat */
   achievementCount: number;
-  /** Rata-rata alpha per semester (opsional, untuk absence trend) */
+  /** Rata-rata ketidakhadiran per semester (opsional, untuk absence trend) */
   avgAbsencePerSemester?: number;
 }
 
+/**
+ * ScoringResult
+ * 
+ * Hasil dari scoring engine — berisi skor, level, faktor kontribusi, dan ringkasan.
+ */
 export interface ScoringResult {
   /** Skor risiko 0-100 (0 = aman, 100 = kritis) */
   score: number;
-  /** Level risiko */
+  /** Level risiko — AMAN, WASPADA, atau KRITIS */
   level: "AMAN" | "WASPADA" | "KRITIS";
-  /** Faktor-faktor kontribusi (hanya yang aktif) */
+  /** Faktor-faktor kontribusi (hanya yang aktif/terpenuhi threshold-nya) */
   factors: ScoringFactor[];
-  /** Penjelasan singkat */
+  /** Penjelasan singkat dalam bahasa Indonesia */
   summary: string;
 }
 
+/**
+ * ScoringFactor
+ * 
+ * Satu faktor risiko yang teridentifikasi — berisi nama, label, kontribusi, dan detail.
+ */
 export interface ScoringFactor {
+  /** Nama internal faktor (snake_case) */
   name: string;
+  /** Label display dalam bahasa Indonesia */
   label: string;
-  /** Seberapa besar kontribusi ke skor akhir (0-1) */
+  /** Seberapa besar kontribusi terhadap skor akhir (0-1) */
   contribution: number;
+  /** Deskripsi detail dalam bahasa Indonesia */
   detail: string;
 }
 
@@ -61,6 +98,7 @@ export interface ScoringFactor {
  * - Kurangnya prestasi mungkin indikasi engagement rendah → 10 pts
  */
 
+/** Bobot risiko untuk setiap faktor — konstanta immutable */
 const WEIGHTS = {
   LOW_KNOWLEDGE: { maxPoints: 35, label: "Nilai Rendah", desc: "Rata-rata nilai di bawah 70" },
   HIGH_VOLATILITY: { maxPoints: 10, label: "Nilai Tidak Stabil", desc: "Volatilitas nilai > 15" },
@@ -69,13 +107,38 @@ const WEIGHTS = {
   NO_ACHIEVEMENT: { maxPoints: 10, label: "Kurang Prestasi", desc: "Belum ada prestasi (min 2 semester)" },
 } as const;
 
+/**
+ * evaluateRisk
+ * 
+ * Fungsi utama scoring engine. Mengevaluasi 5 faktor risiko berdasarkan input
+ * dan menghasilkan skor, level, serta faktor-faktor kontribusi.
+ * 
+ * Proses:
+ * 1. Inisialisasi factors[] = [] dan totalScore = 0.
+ * 2. Evaluasi setiap faktor secara berurutan:
+ *    - Cek apakah threshold terpenuhi (berdasarkan semesterCount dan nilai).
+ *    - Hitung severity (0-1) berdasarkan jarak dari threshold.
+ *    - Hitung points = maxPoints * severity.
+ *    - Tambahkan ke totalScore dan factors[].
+ * 3. Clamp totalScore ke [0, 100].
+ * 4. Tentukan level berdasarkan threshold.
+ * 5. Generate summary deskriptif.
+ * 6. Return ScoringResult.
+ * 
+ * @param input - ScoringInput yang berisi fitur-fitur siswa
+ * @returns ScoringResult — skor, level, faktor, dan ringkasan
+ */
 export function evaluateRisk(input: ScoringInput): ScoringResult {
+  logger.debug({ avgKnowledge: input.avgKnowledge, semesterCount: input.semesterCount }, "evaluateRisk called");
+
   const factors: ScoringFactor[] = [];
   let totalScore = 0;
 
-  // 1. LOW KNOWLEDGE — pengetahuan di bawah KKM
+  // ── 1. LOW KNOWLEDGE — pengetahuan di bawah KKM (70) ──
+  // Hanya evaluasi jika ada data semester (semesterCount > 0)
   if (input.semesterCount > 0 && input.avgKnowledge < 70) {
-    const severity = Math.min(1, (70 - input.avgKnowledge) / 30); // 0-1 berdasarkan jarak dari 70
+    // severity: 0-1 berdasarkan jarak dari KKM 70, maksimum di 30 poin di bawah KKM
+    const severity = Math.min(1, (70 - input.avgKnowledge) / 30);
     const pts = Math.round(WEIGHTS.LOW_KNOWLEDGE.maxPoints * severity);
     if (pts > 0) {
       totalScore += pts;
@@ -88,8 +151,10 @@ export function evaluateRisk(input: ScoringInput): ScoringResult {
     }
   }
 
-  // 2. HIGH VOLATILITY — nilai tidak stabil antar semester
+  // ── 2. HIGH VOLATILITY — nilai tidak stabil antar semester ──
+  // Minimal 2 semester untuk bisa menghitung volatilitas
   if (input.semesterCount >= 2 && input.scoreVolatility > 15) {
+    // severity: berdasarkan seberapa jauh di atas threshold 15
     const severity = Math.min(1, (input.scoreVolatility - 15) / 25);
     const pts = Math.round(WEIGHTS.HIGH_VOLATILITY.maxPoints * severity);
     totalScore += pts;
@@ -101,10 +166,12 @@ export function evaluateRisk(input: ScoringInput): ScoringResult {
     });
   }
 
-  // 3. HIGH ABSENCE — alpha per semester
+  // ── 3. HIGH ABSENCE — rata-rata alpha per semester ──
   if (input.semesterCount > 0) {
+    // Gunakan avgAbsencePerSemester jika disediakan, fallback ke totalAbsence / semesterCount
     const avgAlpha = input.avgAbsencePerSemester ?? input.totalAbsence / input.semesterCount;
     if (avgAlpha > 5) {
+      // severity: berdasarkan seberapa jauh di atas threshold 5
       const severity = Math.min(1, (avgAlpha - 5) / 10);
       const pts = Math.round(WEIGHTS.HIGH_ABSENCE.maxPoints * severity);
       totalScore += pts;
@@ -117,8 +184,10 @@ export function evaluateRisk(input: ScoringInput): ScoringResult {
     }
   }
 
-  // 4. NEGATIVE TREND — nilai turun signifikan
+  // ── 4. NEGATIVE TREND — nilai turun signifikan ──
+  // Minimal 2 semester, scoreDelta < -10 (turun lebih dari 10 poin)
   if (input.semesterCount >= 2 && input.scoreDelta < -10) {
+    // severity: berdasarkan seberapa besar penurunan di atas 10 poin
     const severity = Math.min(1, Math.abs(input.scoreDelta + 10) / 20);
     const pts = Math.round(WEIGHTS.NEGATIVE_TREND.maxPoints * severity);
     totalScore += pts;
@@ -130,7 +199,7 @@ export function evaluateRisk(input: ScoringInput): ScoringResult {
     });
   }
 
-  // 5. NO ACHIEVEMENT — belum ada prestasi (min 2 semester)
+  // ── 5. NO ACHIEVEMENT — belum ada prestasi (minimal 2 semester) ──
   if (input.semesterCount >= 2 && input.achievementCount === 0) {
     totalScore += WEIGHTS.NO_ACHIEVEMENT.maxPoints;
     factors.push({
@@ -141,16 +210,16 @@ export function evaluateRisk(input: ScoringInput): ScoringResult {
     });
   }
 
-  // Clamp ke 0-100
+  // Clamp total skor ke rentang [0, 100]
   totalScore = Math.max(0, Math.min(100, totalScore));
 
-  // Tentukan level
+  // Tentukan level berdasarkan threshold
   let level: "AMAN" | "WASPADA" | "KRITIS";
   if (totalScore >= 50) level = "KRITIS";
   else if (totalScore >= 25) level = "WASPADA";
   else level = "AMAN";
 
-  // Summary
+  // Generate summary deskriptif berdasarkan faktor aktif
   let summary: string;
   if (totalScore === 0) {
     summary = "Tidak terdeteksi faktor risiko yang signifikan.";
@@ -159,10 +228,16 @@ export function evaluateRisk(input: ScoringInput): ScoringResult {
   } else if (factors.length === 2) {
     summary = `Faktor utama: ${factors[0].label} dan ${factors[1].label}.`;
   } else {
+    // Untuk 3+ faktor: pop terakhir, buat list, lalu restore
     const last = factors.pop()!;
     summary = `Faktor utama: ${factors.map((f) => f.label).join(", ")}, dan ${last.label}.`;
-    factors.push(last); // restore
+    factors.push(last); // restore array ke kondisi semula
   }
+
+  logger.info(
+    { score: totalScore, level, factorCount: factors.length },
+    "evaluateRisk completed"
+  );
 
   return {
     score: totalScore,

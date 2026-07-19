@@ -1,3 +1,51 @@
+/**
+ * ml.service.ts
+ * 
+ * Cara kerja file ini:
+ * - Service layer untuk fitur machine learning (ML) di LSAR.
+ * - Menyediakan fungsi-fungsi yang dipanggil oleh `ml.controller.ts` untuk:
+ *   risk assessment, trend prediction, behavior clustering, model management, dan evaluasi.
+ * - Menggabungkan beberapa pendekatan: rule-based scoring, linear regression,
+ *   K-Means clustering, ONNX Runtime inference, dan LLM Agent untuk explanation.
+ * - Semua hasil prediksi di-persist ke tabel `PredictedOutcome` via Prisma upsert.
+ * 
+ * Alur lengkap:
+ * 1. getStudentRisk(studentId):
+ *    a. Ambil data student dari DB.
+ *    b. computeFeatures() → ekstrak fitur dari riwayat akademik.
+ *    c. factorsFromFeatures() → tentukan faktor risiko deskriptif.
+ *    d. evaluateRisk() → scoring engine (rule-based, deterministic).
+ *    e. analyzeRisk() → LLM Agent untuk explanation (graceful fallback jika gagal).
+ *    f. Gabungkan hasil → return { features, risk }.
+ *    g. Persist ke PredictedOutcome (upsert).
+ * 
+ * 2. getClassRisk(classId):
+ *    a. Ambil semua siswa dalam kelas.
+ *    b. Loop: untuk setiap siswa computeFeatures + evaluateRisk.
+ *    c. Sortir berdasarkan score (descending).
+ *    d. Return results + summary (kritis/waspada/aman count).
+ * 
+ * 3. getStudentTrend(studentId):
+ *    a. Ambil data student + semester averages dari DB.
+ *    b. trainLinearRegression() → hitung slope, R², prediksi semester depan.
+ *    c. analyzeTrend() → LLM Agent untuk explanation (graceful fallback).
+ *    d. Persist ke PredictedOutcome (upsert).
+ *    e. Return { features, trend }.
+ * 
+ * 4. getClassCluster(classId):
+ *    a. Cek apakah cluster model sudah di-train.
+ *    b. Ambil semua siswa dalam kelas.
+ *    c. Untuk setiap siswa: computeFeatures → normalisasi → runOnnxInference()
+ *       (fallback ke K-Means JS jika ONNX gagal).
+ *    d. Agregasi cluster → hitung avgKnowledge & avgAbsence per cluster.
+ *    e. explainCluster() → LLM Agent untuk label/deskripsi cluster (graceful fallback).
+ *    f. Return { clusters, assignments, profiles }.
+ * 
+ * 5. getModels() / retrainModels() / evaluateAllModels() / getOutcomes():
+ *    - Operasi manajemen model: lihat daftar, retrain, evaluasi, lihat outcome.
+ *    - refreshOnnxPaths() dijalankan setelah retrain untuk update cache ONNX.
+ */
+
 import { prisma } from "../../lib/prisma";
 import { NotFoundError } from "../../common/error";
 import { computeFeatures } from "./features";
@@ -15,74 +63,154 @@ import { runOnnxInference, clearOnnxCache } from "./onnx-runner";
 import { trainLinearRegression } from "./models/linear-regression";
 import type { StudentFeatures } from "./features";
 import * as fs from "fs";
+import logger from "../../lib/logger";
 
-/** Cache the active ONNX file paths — refreshed on retrain */
+/**
+ * Cache path file ONNX yang aktif — di-refresh setiap kali retrain.
+ * Key: modelType (string), Value: filePath atau null jika tidak tersedia.
+ */
 let onnxPaths: Record<string, string | null> = {};
 
+/**
+ * refreshOnnxPaths
+ * 
+ * Mengambil model ML aktif dari DB yang memiliki filePath valid (file exists),
+ * lalu memperbarui cache `onnxPaths`. Juga membersihkan cache ONNX Runtime
+ * agar inference menggunakan file terbaru.
+ */
 async function refreshOnnxPaths() {
+  logger.info({}, "Refreshing ONNX file paths cache");
+
+  // Ambil maksimal 3 model aktif terbaru yang punya filePath
   const models = await prisma.mlModel.findMany({
     where: { isActive: true, filePath: { not: null } },
     orderBy: { trainedAt: "desc" },
     take: 3,
   });
+
   onnxPaths = {};
   for (const m of models) {
+    // Validasi keberadaan file fisik sebelum caching
     if (m.filePath && fs.existsSync(m.filePath)) {
       onnxPaths[m.modelType] = m.filePath;
+      logger.debug({ modelType: m.modelType, filePath: m.filePath }, "ONNX path cached");
+    } else {
+      logger.warn({ modelType: m.modelType, filePath: m.filePath }, "ONNX file not found on disk");
     }
   }
+
+  // Bersihkan cache ONNX Runtime agar inference pakai file baru
   clearOnnxCache();
+  logger.info({ cachedPaths: Object.keys(onnxPaths).length }, "ONNX paths refreshed");
 }
 
+/**
+ * ensureOnnxExists
+ * 
+ * Memastikan file ONNX tersedia di cache. Jika cache kosong, cek DB.
+ * Jika tidak ada file ONNX yang valid, otomatis trigger retrain.
+ */
 async function ensureOnnxExists(): Promise<void> {
-  if (Object.keys(onnxPaths).length > 0) return;
+  // Jika cache sudah terisi, tidak perlu apa-apa
+  if (Object.keys(onnxPaths).length > 0) {
+    logger.debug({}, "ONNX cache already populated, skipping ensure");
+    return;
+  }
 
+  logger.info({}, "ONNX cache empty, checking database for trained models");
+
+  // Cari semua model aktif dari DB
   const records = await prisma.mlModel.findMany({
     where: { isActive: true },
     select: { id: true, modelType: true, filePath: true, trainedAt: true },
     orderBy: { trainedAt: "desc" },
   });
 
+  // Tentukan apakah perlu retrain: jika tidak ada record, atau ada record tanpa filePath/file tidak ada
   const needsRetrain = records.length === 0 || records.some((r) => !r.filePath || !fs.existsSync(r.filePath));
+
   if (needsRetrain) {
+    logger.warn({ recordCount: records.length }, "ONNX files missing or invalid — triggering auto-retrain");
     try {
-      console.log("[Analytics] ONNX files missing — regenerating K-Means model...");
       await retrain();
       await refreshOnnxPaths();
     } catch (err: any) {
-      console.warn(`[Analytics] Auto-generation failed: ${err.message}`);
+      logger.error({ err }, "Auto-generation of ONNX models failed");
     }
   } else {
+    // File valid ada, tinggal isi cache
+    logger.info({}, "ONNX files found on disk, populating cache");
     await refreshOnnxPaths();
   }
 }
 
 // ============================================================
-// Risk Assessment — uses transparent rule-based ScoringEngine
+// Risk Assessment — menggunakan rule-based ScoringEngine yang transparan
 // ============================================================
 
+/**
+ * factorsFromFeatures
+ * 
+ * Mengubah fitur-fitur numerik menjadi array string faktor risiko deskriptif.
+ * Setiap faktor punya ambang batas (threshold) yang jelas dan terdokumentasi.
+ * 
+ * @param features - StudentFeatures hasil computeFeatures()
+ * @returns Array of string deskripsi faktor risiko
+ */
 function factorsFromFeatures(features: StudentFeatures): string[] {
   const factors: string[] = [];
+
+  // Faktor 1: Rata-rata nilai rendah (< 70)
   if (features.avgKnowledge < 70) factors.push(`Rata-rata nilai ${features.avgKnowledge.toFixed(0)} (di bawah 70)`);
+
+  // Faktor 2: Volatilitas nilai tinggi (> 15)
   if (features.scoreVolatility > 15) factors.push(`Nilai tidak stabil (volatilitas ${features.scoreVolatility.toFixed(0)})`);
+
+  // Faktor 3: Tren negatif — nilai turun > 10 poin (minimal 2 semester data)
   if (features.semesterCount >= 2 && features.scoreDelta < -10) factors.push(`Nilai turun ${Math.abs(features.scoreDelta).toFixed(0)} poin`);
+
+  // Faktor 4: Rata-rata ketidakhadiran tinggi (> 5 hari/semester)
   const avgAbsence = features.semesterCount > 0 ? features.totalAbsence / features.semesterCount : 0;
   if (avgAbsence > 5) factors.push(`Rata-rata ketidakhadiran ${avgAbsence.toFixed(0)} hari/semester`);
+
+  // Faktor 5: Tidak ada prestasi (minimal 2 semester data)
   if (features.semesterCount >= 2 && features.achievementCount === 0) factors.push("Belum ada prestasi akademik/non-akademik");
+
+  // Jika tidak ada faktor, berikan indikasi aman
   return factors.length > 0 ? factors : ["Tidak ada faktor risiko signifikan"];
 }
 
+/**
+ * getStudentRisk
+ * 
+ * Risk assessment untuk satu siswa. Menggabungkan:
+ * - Feature extraction dari riwayat akademik
+ * - Rule-based scoring (deterministic, transparan)
+ * - LLM Agent explanation (opsional, graceful fallback)
+ * 
+ * Hasil di-persist ke tabel PredictedOutcome via upsert.
+ * 
+ * @param studentId - ID siswa yang akan di-assess
+ * @returns Object { features, risk } — fitur + hasil assessment
+ */
 export async function getStudentRisk(studentId: string) {
+  logger.info({ studentId }, "getStudentRisk called");
+
+  // Ambil data dasar student (nama, kelas)
   const student = await prisma.student.findUnique({
     where: { id: studentId },
     select: { id: true, name: true, class: { select: { name: true } } },
   });
-  if (!student) throw new NotFoundError("Student not found");
+  if (!student) {
+    logger.warn({ studentId }, "Student not found for risk assessment");
+    throw new NotFoundError("Student not found");
+  }
 
+  // Ekstrak fitur dari seluruh riwayat akademik
   const features = await computeFeatures(studentId);
   const factors = factorsFromFeatures(features);
 
-  // Rule-based risk scoring — transparent, documented, no fake confidence
+  // Rule-based risk scoring — transparan, terdokumentasi, tanpa confidence palsu
   const risk = evaluateRisk({
     avgKnowledge: features.avgKnowledge,
     scoreVolatility: features.scoreVolatility,
@@ -93,7 +221,9 @@ export async function getStudentRisk(studentId: string) {
     avgAbsencePerSemester: features.semesterCount > 0 ? features.totalAbsence / features.semesterCount : 0,
   });
 
-  // LLM Agent explanation (optional enhancement, falls back gracefully)
+  logger.debug({ studentId, riskLevel: risk.level, riskScore: risk.score }, "Rule-based risk computed");
+
+  // LLM Agent explanation (opsional, graceful fallback jika gagal)
   let agentResult = { explanation: "", recommendations: [] as string[] };
   try {
     agentResult = await analyzeRisk(
@@ -114,9 +244,10 @@ export async function getStudentRisk(studentId: string) {
       }
     );
   } catch (err: any) {
-    console.warn(`[Analytics] LLM risk analysis failed for ${studentId}: ${err.message}`);
+    logger.warn({ err, studentId }, "LLM risk analysis failed, using fallback recommendations");
   }
 
+  // Susun hasil akhir: level + score + faktor + rekomendasi + AI explanation
   const result = {
     level: risk.level,
     score: risk.score,
@@ -134,7 +265,7 @@ export async function getStudentRisk(studentId: string) {
     aiExplanation: agentResult.explanation,
   };
 
-  // Persist the assessment
+  // Persist assessment ke PredictedOutcome via upsert
   await prisma.predictedOutcome.upsert({
     where: {
       studentId_academicYearId_modelType_isActive: {
@@ -147,7 +278,7 @@ export async function getStudentRisk(studentId: string) {
     update: {
       label: risk.level,
       score: risk.score,
-      confidence: 1, // deterministic rule-based, always 1
+      confidence: 1, // deterministic rule-based, selalu 1
       features: { factors: risk.factors } as any,
     },
     create: {
@@ -161,19 +292,35 @@ export async function getStudentRisk(studentId: string) {
     },
   });
 
+  logger.info({ studentId, riskLevel: risk.level }, "getStudentRisk completed");
   return { features, risk: result };
 }
 
 // ============================================================
-// Class Risk — assesses all students in a class
+// Class Risk — menilai risiko semua siswa dalam satu kelas
 // ============================================================
 
+/**
+ * getClassRisk
+ * 
+ * Risk assessment untuk seluruh siswa dalam satu kelas.
+ * Setiap siswa dihitung secara individual, lalu hasilnya diagregasi.
+ * 
+ * @param classId - ID kelas
+ * @returns Object { results, summary } — array hasil per siswa + ringkasan statistik
+ */
 export async function getClassRisk(classId: string) {
+  logger.info({ classId }, "getClassRisk called");
+
+  // Ambil semua siswa dalam kelas
   const students = await prisma.student.findMany({
     where: { classId },
     select: { id: true, name: true },
   });
 
+  logger.debug({ classId, studentCount: students.length }, "Students fetched for class risk");
+
+  // Generic result type untuk setiap siswa
   const results: Array<{
     studentId: string;
     name: string;
@@ -190,6 +337,7 @@ export async function getClassRisk(classId: string) {
     };
   }> = [];
 
+  // Loop setiap siswa: computeFeatures + evaluateRisk
   for (const student of students) {
     try {
       const features = await computeFeatures(student.id);
@@ -220,6 +368,7 @@ export async function getClassRisk(classId: string) {
           semesterCount: features.semesterCount,
         },
         trend: {
+          // Tentukan tren berdasarkan scoreDelta — threshold +/-5
           trend: features.scoreDelta > 5 ? "NAIK" : features.scoreDelta < -5 ? "TURUN" : "STABIL" as "NAIK" | "STABIL" | "TURUN",
           description: features.semesterCount < 2
             ? "Data belum cukup untuk analisis tren"
@@ -231,43 +380,56 @@ export async function getClassRisk(classId: string) {
         },
       });
     } catch (err: any) {
-      console.warn(`[Analytics] Skipping student ${student.id}: ${err.message}`);
+      // Skip siswa jika ada error (misal data tidak lengkap)
+      logger.warn({ err, studentId: student.id }, "Skipping student for class risk");
     }
   }
 
+  // Sortir descending berdasarkan risk score (paling berisiko di atas)
   results.sort((a, b) => b.risk.score - a.risk.score);
 
+  // Ringkasan statistik
   const summary = {
     total: results.length,
     kritis: results.filter((r) => r.risk.level === "KRITIS").length,
     waspada: results.filter((r) => r.risk.level === "WASPADA").length,
     aman: results.filter((r) => r.risk.level === "AMAN").length,
+    // Daftar siswa kritis untuk quick reference
     kritisStudents: results
       .filter((r) => r.risk.level === "KRITIS")
       .map((r) => ({ id: r.studentId, name: r.name, score: r.risk.score })),
   };
 
+  logger.info({ classId, total: summary.total, kritis: summary.kritis }, "getClassRisk completed");
   return { results, summary };
 }
 
 // ============================================================
-// Trend Prediction — uses Linear Regression with real R²
+// Trend Prediction — menggunakan Linear Regression dengan R² asli
 // ============================================================
 
 /**
- * Compute per-semester knowledge averages for trend analysis.
+ * getSemesterAverages
+ * 
+ * Menghitung rata-rata nilai knowledge per semester untuk seorang siswa.
+ * Data diurutkan berdasarkan tahun ajaran dan semester (ascending).
+ * 
+ * @param studentId - ID siswa
+ * @returns Object { x, y, nPoints } — indeks semester sebagai x, rata-rata nilai sebagai y
  */
 async function getSemesterAverages(studentId: string): Promise<{
   x: number[];
   y: number[];
   nPoints: number;
 }> {
+  // Ambil semua semester records milik siswa, urut ascending
   const records = await prisma.semesterRecord.findMany({
     where: { studentId },
     include: { subjectScores: true },
     orderBy: [{ academicYear: { year: "asc" } }, { semester: "asc" }],
   });
 
+  // Hitung rata-rata knowledgeScore per semester
   const semAvgs = records.map((r) => {
     const scores = r.subjectScores;
     return scores.length > 0
@@ -275,31 +437,55 @@ async function getSemesterAverages(studentId: string): Promise<{
       : 0;
   });
 
+  // x = indeks (0, 1, 2, ...), y = rata-rata nilai
   const x = semAvgs.map((_, i) => i);
   const y = semAvgs;
 
   return { x, y, nPoints: semAvgs.length };
 }
 
+/**
+ * getStudentTrend
+ * 
+ * Menganalisis tren akademik seorang siswa menggunakan Linear Regression.
+ * - Fitur dihitung via computeFeatures()
+ * - Rata-rata per semester dihitung via getSemesterAverages()
+ * - trainLinearRegression() menghitung slope, intercept, R², dan prediksi
+ * - LLM Agent memberikan explanation (graceful fallback)
+ * - Hasil di-persist ke PredictedOutcome
+ * 
+ * @param studentId - ID siswa
+ * @returns Object { features, trend } — fitur + hasil analisis tren
+ */
 export async function getStudentTrend(studentId: string) {
+  logger.info({ studentId }, "getStudentTrend called");
+
+  // Ambil data dasar student
   const student = await prisma.student.findUnique({
     where: { id: studentId },
     select: { id: true, name: true },
   });
-  if (!student) throw new NotFoundError("Student not found");
+  if (!student) {
+    logger.warn({ studentId }, "Student not found for trend analysis");
+    throw new NotFoundError("Student not found");
+  }
 
+  // Ekstrak fitur + data semester averages
   const features = await computeFeatures(studentId);
   const { x, y, nPoints } = await getSemesterAverages(studentId);
   const nextSemesterIndex = nPoints;
 
-  // Linear Regression — computed on the fly, real R²
+  // Linear Regression — dihitung on-the-fly, R² asli
   const regression = trainLinearRegression(x, y);
   const nextPrediction = regression.predict(nextSemesterIndex);
 
+  logger.debug({ studentId, slope: regression.slope, rSquared: regression.rSquared, nextPrediction }, "Linear regression computed");
+
+  // Tentukan arah tren berdasarkan slope — threshold +/-2
   const direction: "NAIK" | "STABIL" | "TURUN" =
     regression.slope > 2 ? "NAIK" : regression.slope < -2 ? "TURUN" : "STABIL";
 
-  // LLM Agent explanation (graceful fallback)
+  // LLM Agent explanation (graceful fallback jika gagal)
   let agentResult = { explanation: "" };
   try {
     agentResult = await analyzeTrend(
@@ -320,18 +506,19 @@ export async function getStudentTrend(studentId: string) {
       }
     );
   } catch (err: any) {
-    console.warn(`[Analytics] LLM trend analysis failed for ${studentId}: ${err.message}`);
+    logger.warn({ err, studentId }, "LLM trend analysis failed, using fallback description");
   }
 
+  // Susun hasil trend
   const trend = {
     trend: direction,
     slope: regression.slope,
-    rSquared: regression.rSquared, // REAL R², bukan hardcoded
+    rSquared: regression.rSquared, // R² ASLI, bukan hardcoded
     nextPrediction: Math.round(nextPrediction * 100) / 100,
     description: agentResult.explanation,
   };
 
-  // Persist
+  // Persist ke PredictedOutcome — hanya jika academicYearId tersedia
   if (features.academicYearId) {
     await prisma.predictedOutcome.upsert({
       where: {
@@ -344,7 +531,7 @@ export async function getStudentTrend(studentId: string) {
       },
       update: {
         score: nextPrediction,
-        confidence: Math.max(0, regression.rSquared), // R² as confidence proxy
+        confidence: Math.max(0, regression.rSquared), // R² sebagai confidence proxy
         features: features as any,
       },
       create: {
@@ -358,39 +545,66 @@ export async function getStudentTrend(studentId: string) {
     });
   }
 
+  logger.info({ studentId, trend: direction, rSquared: regression.rSquared }, "getStudentTrend completed");
   return { features, trend };
 }
 
 // ============================================================
-// Behavior Clustering — uses K-Means (legitimate unsupervised learning)
+// Behavior Clustering — menggunakan K-Means (unsupervised learning)
 // ============================================================
 
+/**
+ * getClassCluster
+ * 
+ * Mengelompokkan siswa dalam satu kelas berdasarkan perilaku akademik
+ * menggunakan K-Means clustering. Inference bisa via ONNX Runtime atau
+ * fallback K-Means JS jika ONNX tidak tersedia.
+ * 
+ * Setiap siswa direpresentasikan sebagai vektor 4 dimensi:
+ * [avgKnowledge, avgSkills, totalAbsence, achievementCount]
+ * yang sudah dinormalisasi.
+ * 
+ * @param classId - ID kelas
+ * @returns Object { clusters, assignments, profiles } — info cluster per siswa + agregasi
+ */
 export async function getClassCluster(classId: string) {
+  logger.info({ classId }, "getClassCluster called");
+
+  // Cek apakah cluster model sudah di-train
   const models = await getTrainedModels();
   if (!models.clusterModel) {
+    logger.warn({ classId }, "Cluster model not trained yet");
     return { error: "Cluster model not trained yet. Train models first.", clusters: [], assignments: [] };
   }
 
+  // Ambil semua siswa dalam kelas
   const students = await prisma.student.findMany({
     where: { classId },
     select: { id: true, name: true },
   });
 
+  logger.debug({ classId, studentCount: students.length }, "Students fetched for clustering");
+
+  // Array untuk menyimpan assignment tiap siswa
   const assignments: Array<{
     studentId: string;
     name: string;
     clusterId: number;
   }> = [];
 
+  // Map untuk agregasi data per cluster
   const clusterData: Record<number, { totalKnowledge: number; totalAbsence: number; count: number }> = {};
 
-  // Auto-generate ONNX if not exist
+  // Auto-generate ONNX jika belum ada
   if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
 
+  // Loop setiap siswa: computeFeatures → normalisasi → inference
   for (const student of students) {
     try {
       const features = await computeFeatures(student.id);
-      const maxes = [100, 100, 10, 5];
+
+      // Normalisasi vektor ke [0,1] per dimensi
+      const maxes = [100, 100, 10, 5]; // nilai maksimum per dimensi
       const vec = [
         features.avgKnowledge / maxes[0],
         features.avgSkills / maxes[1],
@@ -398,12 +612,13 @@ export async function getClassCluster(classId: string) {
         Math.min(features.achievementCount / maxes[3], 1),
       ];
 
-      // K-Means inference — ONNX Runtime or JS fallback
+      // K-Means inference — prioritaskan ONNX Runtime, fallback ke JS
       let clusterId: number;
       const onnxCluster = await runOnnxInference(onnxPaths["BEHAVIOR_CLUSTER"], vec);
       if (onnxCluster && onnxCluster.length > 0) {
         clusterId = Math.round(onnxCluster[0]);
       } else {
+        // Fallback ke K-Means JS (in-memory)
         clusterId = models.clusterModel.predict(vec);
       }
 
@@ -413,6 +628,7 @@ export async function getClassCluster(classId: string) {
         clusterId,
       });
 
+      // Inisialisasi aggregator untuk cluster baru
       if (!clusterData[clusterId]) {
         clusterData[clusterId] = { totalKnowledge: 0, totalAbsence: 0, count: 0 };
       }
@@ -420,10 +636,11 @@ export async function getClassCluster(classId: string) {
       clusterData[clusterId].totalAbsence += features.totalAbsence;
       clusterData[clusterId].count++;
     } catch (err: any) {
-      console.warn(`[Analytics] Skipping cluster assignment for student ${student.id}: ${err.message}`);
+      logger.warn({ err, studentId: student.id }, "Skipping cluster assignment for student");
     }
   }
 
+  // Agregasi data per cluster → hitung rata-rata
   const clusters = Object.entries(clusterData).map(([id, data]) => ({
     clusterId: Number(id),
     size: data.count,
@@ -431,13 +648,14 @@ export async function getClassCluster(classId: string) {
     avgAbsence: Math.round((data.totalAbsence / data.count) * 100) / 100,
   }));
 
-  // LLM Agent explanation for clusters (graceful fallback)
+  // LLM Agent untuk label dan deskripsi cluster (graceful fallback)
   let profiles: Array<{ clusterId: number; label: string; description: string }> = [];
   try {
     const agentResult = await explainCluster(clusters);
     profiles = agentResult.profiles;
   } catch (err: any) {
-    console.warn(`[Analytics] LLM cluster explanation failed: ${err.message}`);
+    logger.warn({ err, classId }, "LLM cluster explanation failed, using fallback labels");
+    // Fallback: label generik berdasarkan data agregasi
     profiles = clusters.map((c) => ({
       clusterId: c.clusterId,
       label: `Kelompok ${c.clusterId + 1}`,
@@ -445,11 +663,13 @@ export async function getClassCluster(classId: string) {
     }));
   }
 
+  // Map clusterId → label untuk assignment
   const labelMap: Record<number, string> = {};
   for (const profile of profiles) {
     labelMap[profile.clusterId] = profile.label;
   }
 
+  logger.info({ classId, clusterCount: clusters.length }, "getClassCluster completed");
   return {
     clusters,
     assignments: assignments.map((a) => ({
@@ -464,7 +684,15 @@ export async function getClassCluster(classId: string) {
 // Model Management
 // ============================================================
 
+/**
+ * getModels
+ * 
+ * Mendapatkan daftar model ML yang sudah di-train beserta metadata-nya.
+ * 
+ * @returns Object { trainedAt, hasClusterModel, meta }
+ */
 export async function getModels() {
+  logger.info({}, "getModels called");
   const models = await getTrainedModels();
   return {
     trainedAt: models.trainedAt,
@@ -473,14 +701,38 @@ export async function getModels() {
   };
 }
 
+/**
+ * retrainModels
+ * 
+ * Memicu retraining semua model ML. Setelah retrain, cache ONNX paths di-refresh
+ * agar inference menggunakan model terbaru.
+ * 
+ * @returns Hasil retrain dari trainer.ts
+ */
 export async function retrainModels() {
+  logger.info({}, "retrainModels called — triggering model retraining");
   const result = await retrain();
   await refreshOnnxPaths();
+  logger.info({}, "retrainModels completed");
   return result;
 }
 
+/**
+ * evaluateAllModels
+ * 
+ * Evaluasi komprehensif semua model ML:
+ * 1. Kumpulkan fitur semua siswa.
+ * 2. Analisis distribusi fitur.
+ * 3. Analisis distribusi risiko.
+ * 4. Evaluasi cluster (silhouette score jika model tersedia).
+ * 5. Evaluasi tren (distribusi slope dan R²).
+ * 
+ * @returns EvaluationReport — laporan evaluasi lengkap
+ */
 export async function evaluateAllModels(): Promise<EvaluationReport> {
-  // Gather all students' features for evaluation
+  logger.info({}, "evaluateAllModels called");
+
+  // Kumpulkan fitur semua siswa
   const students = await prisma.student.findMany({ select: { id: true } });
   const allFeatures: StudentFeatures[] = [];
 
@@ -489,19 +741,21 @@ export async function evaluateAllModels(): Promise<EvaluationReport> {
       const features = await computeFeatures(student.id);
       allFeatures.push(features);
     } catch {
-      // skip — student without data doesn't add to evaluation
+      // Skip siswa tanpa data — tidak mempengaruhi evaluasi
     }
   }
 
+  logger.debug({ totalStudents: students.length, validFeatures: allFeatures.length }, "Features collected for evaluation");
+
   const models = await getTrainedModels();
 
-  // Feature analysis
+  // Analisis distribusi fitur
   const featureAnalysis = analyzeFeatures(allFeatures);
 
-  // Risk distribution
+  // Analisis distribusi risiko
   const riskDistribution = analyzeRiskDistribution(allFeatures);
 
-  // Cluster evaluation
+  // Evaluasi cluster — jika model cluster tersedia
   let clusterEvaluation = null;
   if (models.clusterModel && allFeatures.length > 0) {
     const maxes = [
@@ -517,9 +771,10 @@ export async function evaluateAllModels(): Promise<EvaluationReport> {
       Math.min(f.achievementCount / Math.max(maxes[3], 5), 1),
     ]);
     clusterEvaluation = evaluateCluster(clusterVectors, models.clusterModel);
+    logger.debug({ clusterEvaluation }, "Cluster evaluation computed");
   }
 
-  // Trend evaluation
+  // Evaluasi tren — untuk setiap siswa dengan minimal 2 semester data
   const trendResults: Array<{ slope: number; rSquared: number; nPoints: number }> = [];
   for (const f of allFeatures) {
     try {
@@ -528,6 +783,7 @@ export async function evaluateAllModels(): Promise<EvaluationReport> {
         const reg = trainLinearRegression(x, y);
         trendResults.push({ slope: reg.slope, rSquared: reg.rSquared, nPoints });
       } else {
+        // Data tidak cukup untuk regresi
         trendResults.push({ slope: 0, rSquared: 0, nPoints });
       }
     } catch {
@@ -535,8 +791,9 @@ export async function evaluateAllModels(): Promise<EvaluationReport> {
     }
   }
   const trendEvaluation = evaluateTrends(trendResults);
+  logger.debug({ trendEvaluation }, "Trend evaluation computed");
 
-  return {
+  const report: EvaluationReport = {
     generatedAt: new Date().toISOString(),
     nStudents: allFeatures.length,
     dataQuality: featureAnalysis.dataQuality,
@@ -545,9 +802,22 @@ export async function evaluateAllModels(): Promise<EvaluationReport> {
     clusterEvaluation,
     trendEvaluation,
   };
+
+  logger.info({ nStudents: allFeatures.length }, "evaluateAllModels completed");
+  return report;
 }
 
+/**
+ * getOutcomes
+ * 
+ * Mendapatkan semua predicted outcomes (hasil prediksi ML) yang tersimpan.
+ * Bisa difilter berdasarkan studentId jika disediakan.
+ * 
+ * @param studentId - (opsional) Filter berdasarkan ID siswa
+ * @returns Array of PredictedOutcome dengan relasi student
+ */
 export async function getOutcomes(studentId?: string) {
+  logger.info({ studentId: studentId || "all" }, "getOutcomes called");
   const where = studentId ? { studentId } : {};
   return prisma.predictedOutcome.findMany({
     where: { ...where, isActive: true },

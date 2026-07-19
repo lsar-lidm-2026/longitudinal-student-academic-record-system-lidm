@@ -38,25 +38,82 @@ export function ChatBot() {
 
     const userMsg = input.trim();
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
+    
+    // Tambahkan pesan user dan placeholder untuk assistant
+    setMessages((prev) => [
+      ...prev, 
+      { role: "user", content: userMsg },
+      { role: "assistant", content: "" }
+    ]);
     setLoading(true);
 
     try {
       const history = messages.slice(1).map((m) => ({ role: m.role, content: m.content }));
-      const res = await api.handleResponse(
-        api.post<ChatResponse>("/chatbot/message", {
-          message: userMsg,
-          history: history.slice(-10), // keep context manageable
-        })
-      );
-      setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
-    } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: err.message || "Maaf, terjadi kesalahan. Silakan coba lagi." },
-      ]);
-    } finally {
+      
+      const res = await api.requestStream("/chatbot/stream", {
+        message: userMsg,
+        history: history.slice(-10), // keep context manageable
+      });
+
+      if (!res.body) throw new Error("Stream body is null");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let doneReading = false;
+      let buffer = "";
+      
+      // Matikan indikator loading karena response pertama sudah masuk
       setLoading(false);
+
+      while (!doneReading) {
+        const { value, done } = await reader.read();
+        if (done) {
+          doneReading = true;
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+          
+          if (trimmed === "data: [DONE]") {
+            doneReading = true;
+            break;
+          }
+
+          try {
+            const chunkStr = trimmed.slice(6);
+            const chunk = JSON.parse(chunkStr);
+
+            if (chunk.error) {
+              throw new Error(chunk.error);
+            }
+
+            // Append chunk text ke pesan terakhir
+            setMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1].content += chunk;
+              return newMsgs;
+            });
+          } catch (e) {
+            // ignore JSON parse error untuk chunk individual jika terpotong
+          }
+        }
+      }
+    } catch (err: any) {
+      setLoading(false);
+      setMessages((prev) => {
+        const newMsgs = [...prev];
+        // Jika belum ada isinya, timpa dengan pesan error
+        if (!newMsgs[newMsgs.length - 1].content) {
+          newMsgs[newMsgs.length - 1].content = err.message || "Maaf, terjadi kesalahan. Silakan coba lagi.";
+        }
+        return newMsgs;
+      });
     }
   }
 

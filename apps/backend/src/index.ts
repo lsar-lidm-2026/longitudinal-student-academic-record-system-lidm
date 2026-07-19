@@ -1,8 +1,46 @@
+/**
+ * Entry Point — LSAR Backend Server
+ * ==================================
+ *
+ * Cara Kerja:
+ * 1. Memuat konfigurasi dari environment (env.ts) dan melakukan validasi variabel kritis (JWT_SECRET).
+ * 2. Membuat instance Elysia, memasang plugin CORS dan Swagger (dokumentasi API di /docs).
+ * 3. Mendaftarkan global error handler (.onError) yang menangani:
+ *    - Route tidak ditemukan (NOT_FOUND → 404)
+ *    - Custom AppError (statusCode dari kelas error)
+ *    - Prisma errors (P2002 duplikat, P2025 not found, P2003 referensi)
+ *    - Validasi Elysia (VALIDATION → 400)
+ *    - Fallback: 500 Internal Server Error
+ * 4. Mendefinisikan endpoint /api/health untuk pengecekan status DB dan ML model.
+ * 5. Mendaftarkan semua module controller di grup /api.
+ * 6. Menjalankan server pada port dari env (default 3001).
+ * 7. Jika clusteringEnabled=true, melatih model K-Means saat startup dan menjadwalkan
+ *    retraining periodik menggunakan setInterval.
+ *
+ * Alur Lengkap:
+ * - Startup → Load env → Validasi JWT → Buat Elysia app → Pasang CORS/Swagger →
+ *   Register error handler → Register health check → Register all controllers →
+ *   Listen pada port → Auto-train model (jika diaktifkan) → Siap menerima request
+ *
+ * Dependencies:
+ * - Elysia: Web framework utama
+ * - @elysiajs/cors: CORS middleware untuk mengizinkan origin tertentu
+ * - @elysiajs/swagger: Dokumentasi API Swagger/OpenAPI
+ * - ./config/env: Konfigurasi environment (port, JWT, LLM, S3, dll)
+ * - ./common/response: Helper response (success, error, paginated)
+ * - ./modules/ (semua controller): Setiap module controller untuk routing endpoint
+ * - ./lib/prisma: Helper checkDbHealth untuk mengecek koneksi database
+ * - ./modules/ml/trainer: Fungsi trainModels untuk K-Means clustering
+ * - ./modules/ml/ml.service: Fungsi getModels untuk mengecek status model
+ * - ./lib/logger: Pino logger untuk logging terstruktur
+ */
+
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { swagger } from "@elysiajs/swagger";
 import { env } from "./config/env";
 import { success, error as errorResponse } from "./common/response";
+import logger from "./lib/logger";
 import { authController } from "./modules/auth/auth.controller";
 import { academicYearController } from "./modules/academic-years/academic-year.controller";
 import { classController } from "./modules/classes/class.controller";
@@ -26,25 +64,28 @@ import { checkDbHealth } from "./lib/prisma";
 import { trainModels } from "./modules/ml/trainer";
 import { getModels } from "./modules/ml/ml.service";
 
-// Validate critical env vars at startup
+// Validate critical env vars at startup — tanpa JWT_SECRET server tidak bisa jalan
 if (!env.jwtSecret) {
-  console.error("❌ JWT_SECRET is not set. Application will not start.");
+  logger.fatal({ context: "startup" }, "JWT_SECRET is not set. Application will not start.");
   process.exit(1);
 }
 
+// Create Elysia application instance with plugins and configuration
 const app = new Elysia()
+  // CORS middleware — mengizinkan origin tertentu (localhost untuk dev, atau CORS_ORIGIN dari env)
   .use(cors({
     origin: (request: Request) => {
       const origin = request.headers.get("origin") || "";
       // Allow localhost origins (dev) and configured frontend URL
       if (!origin || origin.startsWith("http://localhost") || origin.startsWith("https://localhost")) return true;
-      // In production, restrict to known frontend URL
+      // In production, restrict to known frontend URL via CORS_ORIGIN env
       const allowed = Bun.env.CORS_ORIGIN || "";
       if (allowed && origin === allowed) return true;
       return false; // block others
     },
-    credentials: true,
+    credentials: true, // Izinkan cookie/auth header lintas origin
   }))
+  // Swagger/OpenAPI documentation — tersedia di /docs
   .use(
     swagger({
       path: "/docs",
@@ -57,55 +98,65 @@ const app = new Elysia()
       },
     })
   )
-  // Global error handler
+  // Global error handler — menangani semua error yang tidak tertangani di route handlers
   .onError(({ code, error: err, set }) => {
+    // Route tidak ditemukan (404)
     if (code === "NOT_FOUND") {
       set.status = 404;
       return errorResponse("NOT_FOUND", "Route not found");
     }
 
+    // Custom AppError (UnauthorizedError, ForbiddenError, NotFoundError, dll)
+    // Setiap kelas error memiliki statusCode sendiri
     if (err && typeof err === "object" && "statusCode" in err) {
       const appErr = err as any;
       set.status = appErr.statusCode;
       return errorResponse(appErr.code, appErr.message);
     }
 
-    // Prisma errors
+    // Prisma errors — kode error spesifik dari Prisma ORM
     if (err && typeof err === "object" && "code" in err) {
       const prismaErr = err as any;
       if (prismaErr.code === "P2002") {
+        // Unique constraint violation — duplicate entry
         set.status = 409;
         return errorResponse("CONFLICT", "Duplicate entry");
       }
       if (prismaErr.code === "P2025") {
+        // Record not found — operasi update/delete pada record yang tidak ada
         set.status = 404;
         return errorResponse("NOT_FOUND", "Record not found");
       }
       if (prismaErr.code === "P2003") {
+        // Foreign key constraint violation
         set.status = 400;
         return errorResponse("VALIDATION_ERROR", "Referenced record not found");
       }
     }
 
-    // Validation error from Elysia
+    // Validation error dari Elysia — request body/params tidak valid
     if (code === "VALIDATION") {
       set.status = 400;
       return errorResponse("VALIDATION_ERROR", (err as any)?.message || "Validation failed");
     }
 
-    console.error("Unhandled error:", err);
+    // Fallback untuk error yang tidak dikenal
+    logger.error({ err, code }, "Unhandled error in global error handler");
     set.status = 500;
     return errorResponse("INTERNAL_ERROR", "Internal server error");
   })
-  // Health check
+  // Health check endpoint — digunakan untuk monitoring status server dan database
   .get("/api/health", async () => {
+    // Jalankan pengecekan DB dan status ML model secara paralel
     const [db, mlModels] = await Promise.all([
-      checkDbHealth(),
-      getModels().catch(() => ({ trainedAt: null, hasClusterModel: false, meta: null })),
+      checkDbHealth(), // Cek koneksi database
+      getModels().catch(() => ({ trainedAt: null, hasClusterModel: false, meta: null })), // Gagal ambil model → null
     ]);
-    const allOk = db.ok;
+    const allOk = db.ok; // Status keseluruhan berdasarkan kesehatan DB
+    const statusText = allOk ? "ok" : "degraded";
+    logger.info({ dbOk: db.ok, mlTrained: mlModels.trainedAt !== null }, `Health check: ${statusText}`);
     return success({
-      status: allOk ? "ok" : "degraded",
+      status: statusText,
       timestamp: new Date().toISOString(),
       database: db,
       analytics: {
@@ -138,34 +189,42 @@ const app = new Elysia()
       .use(uploadController)
       .use(chatbotController)
   )
+  // Start server pada port dari konfigurasi environment
   .listen(env.port);
 
-console.log(`🦊 LSAR API running at http://localhost:${env.port}`);
-console.log(`📚 API docs at http://localhost:${env.port}/docs`);
+logger.info({ port: env.port }, `LSAR API running at http://localhost:${env.port}`);
+logger.info({ docsUrl: `http://localhost:${env.port}/docs` }, `API docs available`);
 
 // Auto-train K-Means clustering model on startup
-// K-Means clustering — satu-satunya model yang beneran di-train
+// K-Means clustering — satu-satunya model yang beneran di-train (unsupervised learning)
 if (env.clusteringEnabled) {
+  // Training awal saat startup
   trainModels().then((m) => {
     if (m.trainedAt) {
-      console.log(`🧠 K-Means clustering model ready (trained at ${m.trainedAt.toISOString()})`);
+      logger.info({ trainedAt: m.trainedAt.toISOString() }, "K-Means clustering model ready");
     } else {
-      console.warn(`⚠️  Analytics model not trained — insufficient data`);
+      logger.warn({}, "Analytics model not trained — insufficient data");
     }
   }).catch((err: any) => {
-    console.warn(`⚠️  Analytics model training failed: ${err.message}`);
+    logger.warn({ err }, "Analytics model initial training failed");
   });
 
-  // Periodic retraining every N hours
+  // Periodic retraining berdasarkan interval dari env (default 6 jam)
+  const intervalMs = env.clusterRetrainIntervalMs;
+  logger.info({ intervalMs }, "Scheduled K-Means retraining enabled");
   setInterval(async () => {
-    console.log(`🔄 Scheduled K-Means retraining at ${new Date().toISOString()}`);
+    logger.info({ timestamp: new Date().toISOString() }, "Scheduled K-Means retraining started");
     try {
       const result = await trainModels();
       if (result.trainedAt) {
-        console.log(`✅ K-Means retrained (${result.meta?.kmeansIterations} iterations, inertia: ${result.meta?.kmeansInertia})`);
+        logger.info({
+          trainedAt: result.trainedAt.toISOString(),
+          iterations: result.meta?.kmeansIterations,
+          inertia: result.meta?.kmeansInertia,
+        }, "K-Means retrained successfully");
       }
     } catch (err: any) {
-      console.error(`❌ Analytics retraining failed: ${err.message}`);
+      logger.error({ err }, "Analytics scheduled retraining failed");
     }
-  }, env.clusterRetrainIntervalMs);
+  }, intervalMs);
 }
