@@ -115,10 +115,11 @@ export default function DashboardLayout({
 
   /**
    * handleLogout — Fungsi untuk logout.
-   * Menghapus token dari API client dan redirect ke halaman login.
+   * Panggil backend /auth/logout, hapus token dari API client, redirect ke login.
    */
-  function handleLogout() {
+  async function handleLogout() {
     logger.info("DashboardLayout", "User logging out");
+    try { await api.post("/auth/logout", {}); } catch {}
     api.setToken(null);
     router.replace("/login");
   }

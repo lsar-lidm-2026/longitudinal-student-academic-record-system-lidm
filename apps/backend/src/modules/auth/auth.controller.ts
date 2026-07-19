@@ -18,9 +18,13 @@
 import { Elysia, t } from "elysia";
 import * as authService from "./auth.service";
 import { success, error as errorResponse } from "../../common/response";
+import { ValidationError, NotFoundError } from "../../common/error";
 import { requireAuth } from "../../middleware/auth";
 import { checkRole } from "../../middleware/role";
 import logger from "../../lib/logger";
+import { prisma } from "../../lib/prisma";
+import { env } from "../../config/env";
+import { sendPasswordResetEmail } from "../../lib/mail";
 
 export const authController = new Elysia({ prefix: "/auth" })
   // ── POST /auth/login ──────────────────────────────────────────────────────
@@ -92,21 +96,120 @@ export const authController = new Elysia({ prefix: "/auth" })
   // ── POST /auth/forgot-password ─────────────────────────────────────────────
   .post(
     "/forgot-password",
-    // Placeholder endpoint: menerima email dan mengembalikan pesan sukses.
-    // Implementasi pengiriman email akan ditambahkan kemudian.
+    // Handler: menerima email, generate token reset, simpan di DB, kirim email via SMTP.
+    // Untuk keamanan, selalu return success meskipun email tidak ditemukan.
     async ({ body }) => {
-      logger.info({ email: body.email }, "Forgot password request received");
-      // Placeholder: di masa depan, endpoint ini akan mengirim email reset password
-      // atau notifikasi ke admin. Saat ini hanya acknowledgment.
+      logger.info({ email: body.email }, "Forgot password request");
+
+      // Cari user berdasarkan email (username = local-part sebelum @)
+      const user = await prisma.user.findFirst({
+        where: { username: body.email.split("@")[0] },
+        select: { id: true, username: true },
+      });
+
+      // Generate token kriptografik (32 bytes hex = 64 karakter)
+      const crypto = await import("node:crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // Kedaluwarsa 1 jam
+
+      // Simpan token ke database (selalu simpan, meskipun user tidak ditemukan)
+      await prisma.passwordResetToken.create({
+        data: { email: body.email, token, expiresAt },
+      });
+
+      // Kirim email reset password
+      const resetLink = `${env.appUrl}/reset-password?token=${token}`;
+      const sent = await sendPasswordResetEmail(body.email, resetLink);
+
+      // Selalu return success — jangan reveal apakah email terdaftar atau tidak
       return success({
-        message:
-          "Permintaan reset password telah diterima. Silakan hubungi administrator sekolah untuk mereset password Anda.",
+        message: sent
+          ? "Tautan reset password telah dikirim ke email Anda."
+          : "Permintaan reset password diterima. Silakan cek email Anda.",
       });
     },
     {
-      // Validasi body: email (string) wajib diisi
+      // Validasi body: email wajib diisi dan harus format email valid
       body: t.Object({
-        email: t.String(),
+        email: t.String({ format: "email" }),
+      }),
+    }
+  )
+  // ── POST /auth/reset-password ─────────────────────────────────────────────
+  .post(
+    "/reset-password",
+    // Handler: menerima token + password baru, validasi token, update password, tandai token terpakai.
+    async ({ body }) => {
+      logger.info({}, "Reset password request");
+
+      const { token, newPassword } = body;
+
+      // Validasi input
+      if (!token || !newPassword || newPassword.length < 6) {
+        throw new ValidationError(
+          "Token tidak valid atau password terlalu pendek (min 6 karakter)"
+        );
+      }
+
+      // Cari token yang valid (belum dipakai, belum expired)
+      const resetToken = await prisma.passwordResetToken.findUnique({
+        where: { token },
+      });
+
+      if (!resetToken) {
+        throw new NotFoundError("Token reset password tidak valid");
+      }
+
+      if (resetToken.usedAt) {
+        throw new ValidationError("Token sudah pernah digunakan");
+      }
+
+      if (new Date() > resetToken.expiresAt) {
+        throw new ValidationError(
+          "Token sudah kedaluwarsa. Silakan minta reset ulang."
+        );
+      }
+
+      // Cari user berdasarkan email (username = local-part sebelum @)
+      const localPart = resetToken.email.split("@")[0];
+      const user = await prisma.user.findFirst({
+        where: { username: localPart },
+      });
+
+      if (!user) {
+        throw new NotFoundError("User tidak ditemukan");
+      }
+
+      // Hash password baru menggunakan Bun native bcrypt
+      const hashedPassword = await Bun.password.hash(newPassword, {
+        algorithm: "bcrypt",
+        cost: 10,
+      });
+
+      // Update password user dalam transaction dengan Prisma
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: user.id },
+          data: { password: hashedPassword },
+        }),
+        // Tandai token sebagai sudah dipakai
+        prisma.passwordResetToken.update({
+          where: { id: resetToken.id },
+          data: { usedAt: new Date() },
+        }),
+      ]);
+
+      logger.info({ userId: user.id }, "Password reset successfully");
+      return success({
+        message:
+          "Password berhasil direset. Silakan login dengan password baru.",
+      });
+    },
+    {
+      // Validasi body: token (string) dan newPassword (min 6 karakter) wajib diisi
+      body: t.Object({
+        token: t.String(),
+        newPassword: t.String({ minLength: 6 }),
       }),
     }
   )

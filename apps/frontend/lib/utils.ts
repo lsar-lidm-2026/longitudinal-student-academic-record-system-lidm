@@ -49,7 +49,9 @@ export function cn(...inputs: ClassValue[]) {
  * - < 60 menit: "X menit lalu"
  * - < 24 jam: "X jam lalu"
  * - < 7 hari: "X hari lalu"
- * - else: formatted date "DD/MM/YYYY HH:mm"
+ * - < 4 minggu: "X minggu lalu"
+ * - < 12 bulan: "X bulan lalu"
+ * - else: formatted date "DD/MM/YYYY"
  *
  * @param dateString - ISO date string (e.g., "2026-07-19T09:00:00.000Z")
  * @returns String waktu relatif dalam Bahasa Indonesia
@@ -64,6 +66,8 @@ export function formatRelativeTime(dateString: string): string {
   const diffMinutes = Math.floor(diffSeconds / 60);
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
 
   if (diffSeconds < 60) {
     return "Baru saja";
@@ -77,12 +81,17 @@ export function formatRelativeTime(dateString: string): string {
   if (diffDays < 7) {
     return `${diffDays} hari lalu`;
   }
+  if (diffWeeks < 4) {
+    return `${diffWeeks} minggu lalu`;
+  }
+  if (diffMonths < 12) {
+    return `${diffMonths} bulan lalu`;
+  }
 
   // Format tanggal lokal Indonesia
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${day}/${month}/${year} ${hours}:${minutes}`;
+  return date.toLocaleDateString("id-ID", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }

@@ -437,7 +437,7 @@ function approximateSilhouette(
  * @param b - Vektor kedua
  * @returns Jarak Euclidean
  */
-function euclidean(a: number[], b: number[]): number {
+export function euclidean(a: number[], b: number[]): number {
   let sum = 0;
   for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2;
   return Math.sqrt(sum);

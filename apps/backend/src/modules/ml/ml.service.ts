@@ -33,13 +33,14 @@
  *    e. Return { features, trend }.
  * 
  * 4. getClassCluster(classId):
- *    a. Cek apakah cluster model sudah di-train.
- *    b. Ambil semua siswa dalam kelas.
- *    c. Untuk setiap siswa: computeFeatures → normalisasi → runOnnxInference()
- *       (fallback ke K-Means JS jika ONNX gagal).
- *    d. Agregasi cluster → hitung avgKnowledge & avgAbsence per cluster.
- *    e. explainCluster() → LLM Agent untuk label/deskripsi cluster (graceful fallback).
- *    f. Return { clusters, assignments, profiles }.
+ *    a. Cek apakah cluster model sudah di-train (DB query, tanpa auto-training).
+ *    b. Load centroids dari JSON file.
+ *    c. Ambil semua siswa dalam kelas.
+ *    d. BATCH query semua semester records → hitung fitur per siswa tanpa DB loop.
+ *    e. K-Means inference via centroid distance (tanpa ONNX).
+ *    f. Agregasi cluster → hitung avgKnowledge & avgAbsence per cluster.
+ *    g. explainCluster() → LLM Agent untuk label/deskripsi cluster (graceful fallback).
+ *    h. Return { clusters, assignments, profiles }.
  * 
  * 5. getModels() / retrainModels() / evaluateAllModels() / getOutcomes():
  *    - Operasi manajemen model: lihat daftar, retrain, evaluasi, lihat outcome.
@@ -57,12 +58,15 @@ import {
   analyzeRiskDistribution,
   evaluateCluster,
   evaluateTrends,
+  euclidean,
   type EvaluationReport,
 } from "./model-evaluator";
-import { runOnnxInference, clearOnnxCache } from "./onnx-runner";
+import { clearOnnxCache } from "./onnx-runner";
 import { trainLinearRegression } from "./models/linear-regression";
 import type { StudentFeatures } from "./features";
 import * as fs from "fs";
+import * as path from "path";
+import { env } from "../../config/env";
 import logger from "../../lib/logger";
 
 /**
@@ -102,46 +106,6 @@ async function refreshOnnxPaths() {
   // Bersihkan cache ONNX Runtime agar inference pakai file baru
   clearOnnxCache();
   logger.info({ cachedPaths: Object.keys(onnxPaths).length }, "ONNX paths refreshed");
-}
-
-/**
- * ensureOnnxExists
- * 
- * Memastikan file ONNX tersedia di cache. Jika cache kosong, cek DB.
- * Jika tidak ada file ONNX yang valid, otomatis trigger retrain.
- */
-async function ensureOnnxExists(): Promise<void> {
-  // Jika cache sudah terisi, tidak perlu apa-apa
-  if (Object.keys(onnxPaths).length > 0) {
-    logger.debug({}, "ONNX cache already populated, skipping ensure");
-    return;
-  }
-
-  logger.info({}, "ONNX cache empty, checking database for trained models");
-
-  // Cari semua model aktif dari DB
-  const records = await prisma.mlModel.findMany({
-    where: { isActive: true },
-    select: { id: true, modelType: true, filePath: true, trainedAt: true },
-    orderBy: { trainedAt: "desc" },
-  });
-
-  // Tentukan apakah perlu retrain: jika tidak ada record, atau ada record tanpa filePath/file tidak ada
-  const needsRetrain = records.length === 0 || records.some((r) => !r.filePath || !fs.existsSync(r.filePath));
-
-  if (needsRetrain) {
-    logger.warn({ recordCount: records.length }, "ONNX files missing or invalid — triggering auto-retrain");
-    try {
-      await retrain();
-      await refreshOnnxPaths();
-    } catch (err: any) {
-      logger.error({ err }, "Auto-generation of ONNX models failed");
-    }
-  } else {
-    // File valid ada, tinggal isi cache
-    logger.info({}, "ONNX files found on disk, populating cache");
-    await refreshOnnxPaths();
-  }
 }
 
 // ============================================================
@@ -570,11 +534,25 @@ export async function getStudentTrend(studentId: string) {
 export async function getClassCluster(classId: string) {
   logger.info({ classId }, "getClassCluster called");
 
-  // Cek apakah cluster model sudah di-train
-  const models = await getTrainedModels();
-  if (!models.clusterModel) {
+  // Cek apakah cluster model sudah di-train — langsung dari DB, tanpa auto-training
+  const clusterModelDb = await prisma.mlModel.findFirst({
+    where: { modelType: "BEHAVIOR_CLUSTER", isActive: true },
+  });
+  if (!clusterModelDb) {
     logger.warn({ classId }, "Cluster model not trained yet");
-    return { error: "Cluster model not trained yet. Train models first.", clusters: [], assignments: [] };
+    return { error: "Model cluster belum dilatih. Klik 'Latih Model' untuk memulai.", clusters: [], assignments: [] };
+  }
+
+  // Load centroids dari exported JSON file (dihasilkan saat training)
+  let centroids: number[][] = [];
+  try {
+    const jsonPath = path.join(env.modelPath, "behavior-cluster.json");
+    const jsonContent = fs.readFileSync(jsonPath, "utf-8");
+    const jsonData = JSON.parse(jsonContent);
+    centroids = jsonData.centroids;
+  } catch (err: any) {
+    logger.warn({ err }, "Failed to load centroids from JSON file");
+    return { error: "File model tidak ditemukan. Silakan latih ulang model.", clusters: [], assignments: [] };
   }
 
   // Ambil semua siswa dalam kelas
@@ -595,49 +573,59 @@ export async function getClassCluster(classId: string) {
   // Map untuk agregasi data per cluster
   const clusterData: Record<number, { totalKnowledge: number; totalAbsence: number; count: number }> = {};
 
-  // Auto-generate ONNX jika belum ada
-  if (Object.keys(onnxPaths).length === 0) await ensureOnnxExists();
+  // ── BATCH query semua semester records untuk semua siswa di kelas ──
+  const studentIds = students.map((s) => s.id);
+  const allRecords = await prisma.semesterRecord.findMany({
+    where: { studentId: { in: studentIds } },
+    include: { subjectScores: true, attendance: true, achievements: { select: { id: true } } },
+  });
+  const recordsByStudent = new Map<string, typeof allRecords>();
+  for (const r of allRecords) {
+    if (!recordsByStudent.has(r.studentId)) recordsByStudent.set(r.studentId, []);
+    recordsByStudent.get(r.studentId)!.push(r);
+  }
 
-  // Loop setiap siswa: computeFeatures → normalisasi → inference
+  const maxes = [100, 100, 10, 5];
   for (const student of students) {
-    try {
-      const features = await computeFeatures(student.id);
-
-      // Normalisasi vektor ke [0,1] per dimensi
-      const maxes = [100, 100, 10, 5]; // nilai maksimum per dimensi
-      const vec = [
-        features.avgKnowledge / maxes[0],
-        features.avgSkills / maxes[1],
-        Math.min(features.totalAbsence / maxes[2], 1),
-        Math.min(features.achievementCount / maxes[3], 1),
-      ];
-
-      // K-Means inference — prioritaskan ONNX Runtime, fallback ke JS
-      let clusterId: number;
-      const onnxCluster = await runOnnxInference(onnxPaths["BEHAVIOR_CLUSTER"], vec);
-      if (onnxCluster && onnxCluster.length > 0) {
-        clusterId = Math.round(onnxCluster[0]);
-      } else {
-        // Fallback ke K-Means JS (in-memory)
-        clusterId = models.clusterModel.predict(vec);
+    const records = recordsByStudent.get(student.id) || [];
+    let avgK = 0, avgS = 0, totalAbs = 0, achCount = 0;
+    const kList: number[] = [];
+    for (const rec of records) {
+      const scores = rec.subjectScores;
+      if (scores.length > 0) {
+        const mean = scores.reduce((s, sc) => s + sc.knowledgeScore, 0) / scores.length;
+        kList.push(mean);
+        avgS += scores.reduce((s, sc) => s + sc.skillsScore, 0) / scores.length;
       }
-
-      assignments.push({
-        studentId: student.id,
-        name: student.name,
-        clusterId,
-      });
-
-      // Inisialisasi aggregator untuk cluster baru
-      if (!clusterData[clusterId]) {
-        clusterData[clusterId] = { totalKnowledge: 0, totalAbsence: 0, count: 0 };
-      }
-      clusterData[clusterId].totalKnowledge += features.avgKnowledge;
-      clusterData[clusterId].totalAbsence += features.totalAbsence;
-      clusterData[clusterId].count++;
-    } catch (err: any) {
-      logger.warn({ err, studentId: student.id }, "Skipping cluster assignment for student");
+      if (rec.attendance) totalAbs += rec.attendance.sick + rec.attendance.permission + rec.attendance.absent;
+      achCount += rec.achievements.length;
     }
+    avgK = kList.length > 0 ? kList.reduce((a, b) => a + b, 0) / kList.length : 0;
+    avgS = records.length > 0 ? avgS / records.length : 0;
+
+    const vec = [
+      avgK / maxes[0], avgS / maxes[1],
+      Math.min(totalAbs / maxes[2], 1),
+      Math.min(achCount / maxes[3], 1),
+    ];
+
+    // K-Means inference — direct centroid distance (tanpa ONNX, tanpa computeFeatures individual)
+    let minDist = Infinity;
+    let clusterId = 0;
+    for (let ci = 0; ci < centroids.length; ci++) {
+      const dist = euclidean(vec, centroids[ci]);
+      if (dist < minDist) { minDist = dist; clusterId = ci; }
+    }
+
+    assignments.push({ studentId: student.id, name: student.name, clusterId });
+
+    // Agregasi per cluster
+    if (!clusterData[clusterId]) {
+      clusterData[clusterId] = { totalKnowledge: 0, totalAbsence: 0, count: 0 };
+    }
+    clusterData[clusterId].totalKnowledge += avgK;
+    clusterData[clusterId].totalAbsence += totalAbs;
+    clusterData[clusterId].count++;
   }
 
   // Agregasi data per cluster → hitung rata-rata

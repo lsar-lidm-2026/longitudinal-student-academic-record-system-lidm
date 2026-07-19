@@ -59,6 +59,7 @@ import { RiskBadge } from "@/components/ml/RiskBadge";
 import { TrendChart } from "@/components/ml/TrendChart";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { formatRelativeTime } from "@/lib/utils";
 import type { StudentProfile, StudentNote, StudentRiskResponse, StudentTrendResponse } from "@/types";
 
 export default function StudentDetailPage() {
@@ -493,15 +494,18 @@ export default function StudentDetailPage() {
       )
     : 0;
 
-  /** Estimasi tingkat kehadiran (100 - total hari absen) */
+  /** Estimasi tingkat kehadiran berdasarkan total absensi dibagi ~120 hari sekolah per semester */
   const totalAttendanceRate = semesterRecords.length > 0
     ? (() => {
-        const total = semesterRecords.reduce((s, r) => {
+        const totalAbsences = semesterRecords.reduce((s, r) => {
           if (!r.attendance) return s;
           return s + r.attendance.sick + r.attendance.permission + r.attendance.absent;
         }, 0);
-        // Approximate: fewer absences = higher rate
-        return total === 0 ? 100 : Math.max(0, 100 - total);
+        // Asumsi: ~120 hari sekolah per semester × jumlah semester
+        const totalDays = semesterRecords.length * 120;
+        return totalDays > 0
+          ? Math.round(((totalDays - totalAbsences) / totalDays) * 100)
+          : 100;
       })()
     : 0;
 
@@ -1142,41 +1146,6 @@ function InfoRow({
       </div>
     </div>
   );
-}
-
-/**
- * formatRelativeTime — Format ISO timestamp menjadi teks relatif dalam Bahasa Indonesia.
- * Contoh: "Baru saja", "5 menit yang lalu", "2 jam yang lalu", "3 hari yang lalu",
- * "1 minggu yang lalu", "2 bulan yang lalu", atau fallback ke locale date string.
- *
- * @param dateStr - ISO date string dari server (e.g. "2026-07-19T02:27:48.352Z")
- * @returns string teks relatif dalam Bahasa Indonesia
- */
-function formatRelativeTime(dateStr: string): string {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-  const diffWeek = Math.floor(diffDay / 7);
-  const diffMonth = Math.floor(diffDay / 30);
-
-  // Logika: semakin besar selisih, semakin "jauh" format relatifnya
-  if (diffSec < 0) return "Baru saja"; // handle future date (clock skew)
-  if (diffMin < 1) return "Baru saja";
-  if (diffMin < 60) return `${diffMin} menit yang lalu`;
-  if (diffHour < 24) return `${diffHour} jam yang lalu`;
-  if (diffDay < 7) return `${diffDay} hari yang lalu`;
-  if (diffWeek < 4) return `${diffWeek} minggu yang lalu`;
-  if (diffMonth < 12) return `${diffMonth} bulan yang lalu`;
-  // Fallback: format tanggal lengkap untuk catatan lama (> 1 tahun)
-  return date.toLocaleDateString("id-ID", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }
 
 /**

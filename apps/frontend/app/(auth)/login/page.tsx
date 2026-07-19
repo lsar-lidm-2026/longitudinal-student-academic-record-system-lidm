@@ -128,8 +128,11 @@ export default function LoginPage() {
       const res = await api.post("/auth/forgot-password", { email: forgotEmail.trim() });
 
       if (res.success) {
-        logger.info("LoginPage", "Reset password link berhasil dikirim", { email: forgotEmail });
-        toast.success("Tautan reset password telah dikirim ke email Anda");
+        logger.info("LoginPage", "Permintaan reset password diterima", { email: forgotEmail });
+        // Ambil pesan dari response backend — backend mengembalikan { data: { message: "..." } }
+        const backendMsg = (res.data as { message?: string } | undefined)?.message;
+        const displayMsg = backendMsg || "Permintaan telah diterima. Silakan hubungi administrator sekolah untuk mereset password Anda.";
+        toast.success(displayMsg);
         // Tutup modal dan reset form
         setShowForgotModal(false);
         setForgotEmail("");
@@ -296,7 +299,7 @@ export default function LoginPage() {
               <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 overflow-hidden">
                 {/* Header: judul + tombol close */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900">Lupa Kata Sandi</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Lupa Kata Sandi?</h3>
                   <button
                     onClick={() => {
                       setShowForgotModal(false);
@@ -354,7 +357,7 @@ export default function LoginPage() {
                         Mengirim...
                       </>
                     ) : (
-                      "Kirim Tautan Reset"
+                      "Kirim Permintaan"
                     )}
                   </button>
                 </div>

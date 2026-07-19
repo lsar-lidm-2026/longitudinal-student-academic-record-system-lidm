@@ -23,7 +23,7 @@
  * 6. Tab lainnya menampilkan placeholder "Fitur ini akan segera tersedia."
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   User,
   Lock,
@@ -103,6 +103,10 @@ export default function SettingsPage() {
 
   /** Toggle theme (Terang/Gelap) — default Terang */
   const [darkMode, setDarkMode] = useState(false);
+  /** Ref ke hidden file input untuk upload foto profil */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Loading state saat upload foto */
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   /** Load notifikasi & preferensi dari localStorage saat mount */
   useEffect(() => {
@@ -111,7 +115,11 @@ export default function SettingsPage() {
       setNotifApp(localStorage.getItem("notif_app") !== "false");
       setNotifAiSummary(localStorage.getItem("notif_ai_summary") !== "false");
       setNotifInputReminder(localStorage.getItem("notif_input_reminder") !== "false");
-      setDarkMode(localStorage.getItem("dark_mode") === "true");
+      const saved = localStorage.getItem("dark_mode");
+      if (saved === "true") {
+        setDarkMode(true);
+        document.documentElement.classList.add("dark");
+      }
     }
   }, []);
 
@@ -123,12 +131,17 @@ export default function SettingsPage() {
     }
   }
 
-  /** Toggle tema gelap/terang */
+  /** Toggle tema gelap/terang — juga menerapkan .dark class pada <html> */
   function toggleDarkMode() {
     const next = !darkMode;
     setDarkMode(next);
     if (typeof window !== "undefined") {
       localStorage.setItem("dark_mode", String(next));
+      if (next) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
     }
   }
 
@@ -380,9 +393,45 @@ export default function SettingsPage() {
                     <User className="w-6 h-6 text-gray-400" />
                   </div>
                   <div className="flex gap-2">
-                    <button className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingPhoto(true);
+                        try {
+                          const formData = new FormData();
+                          formData.append("photo", file);
+                          const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+                          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+                          const res = await fetch(`${API_URL}/upload/profile/photo`, {
+                            method: "POST",
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            body: formData,
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data.success) {
+                            throw new Error(data.error?.message || "Gagal upload foto");
+                          }
+                          toast.success("Foto profil berhasil diperbarui");
+                          logger.info("SettingsPage", "Profile photo updated");
+                        } catch (err: any) {
+                          toast.error(err.message || "Gagal mengupload foto");
+                        } finally {
+                          setUploadingPhoto(false);
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingPhoto}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
                       <Camera className="w-3 h-3" />
-                      Ganti Foto
+                      {uploadingPhoto ? "Mengupload..." : "Ganti Foto"}
                     </button>
                     <button className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-500 text-xs font-medium rounded-lg hover:bg-white transition-colors">
                       <Trash2 className="w-3 h-3" />

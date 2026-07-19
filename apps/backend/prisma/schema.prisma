@@ -291,6 +291,19 @@ model PredictedOutcome {
   @@map("predicted_outcome")
 }
 
+// ── Password Reset Token — untuk fitur lupa password via email ─────────────
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String   // Email user yang minta reset
+  token     String   @unique // Token unik (JWT or crypto)
+  expiresAt DateTime // Token expiry — 1 jam setelah dibuat
+  usedAt    DateTime? // Kapan token digunakan (null = belum dipakai)
+  createdAt DateTime @default(now())
+
+  @@map("password_reset_token")
+}
+
 model MlModel {
   id           String    @id @default(uuid())
   name         String

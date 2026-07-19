@@ -48,6 +48,7 @@ import {
   Clock,
   ArrowRight,
   AlertCircle,
+  Check,
   Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -68,6 +69,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   /** Pesan error — null jika tidak ada error */
   const [error, setError] = useState<string | null>(null);
+  /** Tugas & pengingat yang dibangun dari data summary */
+  const [tasks, setTasks] = useState<Array<{ text: string; priority: "high" | "medium" }>>([]);
 
   /**
    * refresh — Fetch data dashboard dari API.
@@ -80,6 +83,15 @@ export default function DashboardPage() {
     api.handleResponse(api.get<DashboardSummary>("/dashboard/summary"))
       .then((responseData) => {
         setData(responseData);
+        // Bangun daftar tugas & pengingat dari data summary
+        const newTasks: Array<{ text: string; priority: "high" | "medium" }> = [];
+        if (responseData.pendingAiDrafts && responseData.pendingAiDrafts > 0) {
+          newTasks.push({ text: `${responseData.pendingAiDrafts} draft AI perlu ditinjau`, priority: "high" });
+        }
+        if (newTasks.length === 0) {
+          newTasks.push({ text: "Lengkapi data semester aktif", priority: "medium" });
+        }
+        setTasks(newTasks);
         logger.info("DashboardPage", "Dashboard data loaded", {
           totalStudents: responseData.totalStudents,
           totalClasses: responseData.totalClasses,
@@ -321,22 +333,24 @@ export default function DashboardPage() {
               Tugas & Pengingat
             </h3>
             <div className="space-y-2">
-              {/* Item prioritas — lengkapi data semester */}
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-red-500" />
-                  <span className="text-sm text-gray-700">Lengkapi data semester aktif</span>
+              {tasks.length === 0 ? (
+                <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg">
+                  <Check className="w-4 h-4 text-green-500" />
+                  <span className="text-sm text-green-700">Semua data sudah lengkap</span>
                 </div>
-                <span className="text-xs text-gray-400 font-medium">Prioritas</span>
-              </div>
-              {/* Item opsional — review draft AI */}
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-gray-700">Review draft AI terbaru</span>
-                </div>
-                <span className="text-xs text-gray-400 font-medium">Opsional</span>
-              </div>
+              ) : (
+                tasks.map((task, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${task.priority === "high" ? "bg-red-500" : "bg-green-500"}`} />
+                      <span className="text-sm text-gray-700">{task.text}</span>
+                    </div>
+                    <span className={`text-xs font-medium ${task.priority === "high" ? "text-red-400" : "text-gray-400"}`}>
+                      {task.priority === "high" ? "Prioritas" : "Opsional"}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -376,28 +390,32 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── AI Insight Banner ────────────────────────────────── */}
-      {/* Banner promosi fitur AI di bagian bawah dashboard */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          {/* Ikon sparkles di container transparan */}
-          <div className="w-10 h-10 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
-            <Sparkles className="w-5 h-5 text-white" />
+      {/* ── Ringkasan Aktivitas ──────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-500" />
+          Ringkasan Aktivitas
+        </h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Total Siswa</p>
+            <p className="text-xl font-bold text-blue-700 mt-0.5">{data.totalStudents || 0}</p>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-white">Insight AI</h3>
-            <p className="text-xs text-blue-100 mt-0.5 leading-relaxed">
-              Gunakan AI untuk menganalisis perkembangan akademik siswa dan mendapatkan rekomendasi.
+          <div className="p-3 bg-purple-50 rounded-lg">
+            <p className="text-[10px] font-semibold text-purple-500 uppercase tracking-wider">Draft AI</p>
+            <p className="text-xl font-bold text-purple-700 mt-0.5">
+              {data.pendingAiDrafts !== undefined ? data.pendingAiDrafts : 0}
             </p>
           </div>
         </div>
-        {/* Tombol link ke halaman AI */}
-        <Link
-          href="/ml"
-          className="shrink-0 px-4 py-2 bg-white text-blue-600 text-sm font-semibold rounded-lg hover:bg-blue-50 transition-colors shadow-sm"
-        >
-          Buka Analisis
-        </Link>
+        <div className="mt-3">
+          <Link
+            href="/ml"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+          >
+            Lihat detail analisis AI →
+          </Link>
+        </div>
       </div>
     </div>
   );

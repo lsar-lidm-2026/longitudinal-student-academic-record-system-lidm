@@ -63,6 +63,16 @@ export const env = {
   modelPath: Bun.env.MODEL_PATH || "./models",
   clusterRetrainIntervalMs: parseInt(Bun.env.CLUSTER_RETRAIN_INTERVAL || "21600000", 10), // Default 6 jam
 
+  // SMTP — email delivery untuk password reset dan notifikasi
+  smtpHost: Bun.env.SMTP_HOST || "smtp.gmail.com",          // Host SMTP server
+  smtpPort: parseInt(Bun.env.SMTP_PORT || "587", 10),        // Port SMTP (465 untuk SSL, 587 untuk TLS)
+  smtpUser: Bun.env.SMTP_USER || "",                         // Username/email akun SMTP
+  smtpPass: Bun.env.SMTP_PASS || "",                         // Password aplikasi SMTP
+  smtpFrom: Bun.env.SMTP_FROM || "LSAR System <noreply@lsar.sch.id>", // Alamat pengirim email
+
+  // App URL — untuk link reset password yang dikirim via email
+  appUrl: Bun.env.APP_URL || "http://localhost:3000",
+
   // Logging — level default "info"
   logLevel: Bun.env.LOG_LEVEL || "info",
 };
