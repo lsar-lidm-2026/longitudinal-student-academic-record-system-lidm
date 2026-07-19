@@ -48,7 +48,11 @@ Anda membantu guru dan operator sekolah mengakses data akademik siswa.
 Anda bisa menjawab pertanyaan tentang:
 - Data siswa (nama, NIS, kelas)
 - Nilai siswa
-- Analisis risiko siswa
+- Prestasi siswa
+- Catatan guru
+- Data kesehatan
+- Analisis risiko siswa dan kelas
+- Tren perkembangan nilai
 - Statistik sekolah
 - Tahun ajaran
 - Kelas dan siswa di dalamnya

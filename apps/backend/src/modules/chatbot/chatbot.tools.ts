@@ -19,13 +19,18 @@
  * 5. Hasil diformat sebagai string dan dikembalikan ke LLM.
  * 6. LLM memproses hasil dan memberikan jawaban ke user.
  *
- * Tools yang Tersedia:
+ * Tools yang Tersedia (13 tools):
  * - cari_siswa         — Cari siswa berdasarkan nama/NIS/NISN
  * - detail_siswa       — Profil lengkap siswa
  * - nilai_siswa        — Nilai siswa per semester
+ * - prestasi_siswa     — Prestasi/achievement siswa
+ * - catatan_guru       — Catatan guru untuk siswa
+ * - kesehatan_siswa    — Data kesehatan siswa
  * - daftar_kelas       — Daftar siswa dalam satu kelas
  * - kelas_saya         — Daftar kelas di tahun ajaran aktif
  * - risiko_siswa       — Analisis risiko siswa (AMAN/WASPADA/KRITIS)
+ * - risiko_kelas       — Distribusi risiko per kelas
+ * - tren_nilai         — Tren nilai/grafik perkembangan siswa
  * - statistik_sekolah  — Statistik umum sekolah
  * - tahun_ajaran_aktif — Info tahun ajaran aktif
  */
@@ -205,6 +210,86 @@ export const CHATBOT_TOOLS = [
       parameters: {
         type: "object",
         properties: {},
+      },
+    },
+  },
+
+  // ── PRESTASI SISWA ──────────────────────────────────────────────────
+  {
+    type: "function" as const,
+    function: {
+      name: "prestasi_siswa",
+      description: "Lihat daftar prestasi/achievement seorang siswa di semua semester.",
+      parameters: {
+        type: "object",
+        properties: {
+          studentId: { type: "string", description: "ID siswa" },
+        },
+        required: ["studentId"],
+      },
+    },
+  },
+
+  // ── CATATAN GURU ────────────────────────────────────────────────────
+  {
+    type: "function" as const,
+    function: {
+      name: "catatan_guru",
+      description: "Lihat catatan-catatan guru untuk seorang siswa.",
+      parameters: {
+        type: "object",
+        properties: {
+          studentId: { type: "string", description: "ID siswa" },
+        },
+        required: ["studentId"],
+      },
+    },
+  },
+
+  // ── KESEHATAN SISWA ─────────────────────────────────────────────────
+  {
+    type: "function" as const,
+    function: {
+      name: "kesehatan_siswa",
+      description: "Lihat data kesehatan seorang siswa (tinggi, berat, penglihatan, pendengaran, gigi).",
+      parameters: {
+        type: "object",
+        properties: {
+          studentId: { type: "string", description: "ID siswa" },
+        },
+        required: ["studentId"],
+      },
+    },
+  },
+
+  // ── TREN NILAI ──────────────────────────────────────────────────────
+  {
+    type: "function" as const,
+    function: {
+      name: "tren_nilai",
+      description: "Lihat tren perkembangan nilai seorang siswa dari semester ke semester, termasuk prediksi arah tren (NAIK/STABIL/TURUN).",
+      parameters: {
+        type: "object",
+        properties: {
+          studentId: { type: "string", description: "ID siswa" },
+        },
+        required: ["studentId"],
+      },
+    },
+  },
+
+  // ── RISIKO KELAS ────────────────────────────────────────────────────
+  {
+    type: "function" as const,
+    function: {
+      name: "risiko_kelas",
+      description: "Lihat distribusi tingkat risiko siswa dalam satu kelas (AMAN/WASPADA/KRITIS).",
+      parameters: {
+        type: "object",
+        properties: {
+          classId: { type: "string", description: "ID kelas" },
+        },
+        required: ["classId"],
       },
     },
   },
@@ -548,6 +633,163 @@ const toolHandlers: Record<string, (args: Record<string, string>) => Promise<Too
         `Status: ${active.isArchived ? "Diarsipkan" : "Aktif"}`,
         `Jumlah Kelas: ${classCount}`,
       ].join("\n"),
+    };
+  },
+
+  // ── PRESTASI SISWA ──────────────────────────────────────────────────
+  prestasi_siswa: async (args) => {
+    const studentId = args.studentId;
+    logger.debug({ studentId }, "Chatbot tool: prestasi_siswa called");
+
+    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { name: true } });
+    if (!student) return { success: true, result: "Siswa tidak ditemukan." };
+
+    const achievements = await prisma.achievement.findMany({
+      where: { semesterRecord: { studentId } },
+      include: { semesterRecord: { include: { academicYear: { select: { year: true } } } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (achievements.length === 0) {
+      return { success: true, result: `${student.name} belum memiliki prestasi.` };
+    }
+
+    const list = achievements.map((a) =>
+      `- ${a.title} (${a.type}) — ${a.semesterRecord.academicYear.year}`
+    ).join("\n");
+
+    logger.info({ studentId, count: achievements.length }, "Chatbot tool: prestasi_siswa completed");
+    return { success: true, result: `Prestasi ${student.name}:\n${list}` };
+  },
+
+  // ── CATATAN GURU ────────────────────────────────────────────────────
+  catatan_guru: async (args) => {
+    const studentId = args.studentId;
+    logger.debug({ studentId }, "Chatbot tool: catatan_guru called");
+
+    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { name: true } });
+    if (!student) return { success: true, result: "Siswa tidak ditemukan." };
+
+    const notes = await prisma.teacherNote.findMany({
+      where: { studentId },
+      include: { createdBy: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    if (notes.length === 0) {
+      return { success: true, result: `${student.name} belum memiliki catatan guru.` };
+    }
+
+    const list = notes.map((n) =>
+      `- "${n.content.substring(0, 150)}" — ${n.createdBy.name} (${n.createdAt.toLocaleDateString("id-ID")})`
+    ).join("\n");
+
+    logger.info({ studentId, count: notes.length }, "Chatbot tool: catatan_guru completed");
+    return { success: true, result: `Catatan guru untuk ${student.name}:\n${list}` };
+  },
+
+  // ── KESEHATAN SISWA ─────────────────────────────────────────────────
+  kesehatan_siswa: async (args) => {
+    const studentId = args.studentId;
+    logger.debug({ studentId }, "Chatbot tool: kesehatan_siswa called");
+
+    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { name: true } });
+    if (!student) return { success: true, result: "Siswa tidak ditemukan." };
+
+    const records = await prisma.healthRecord.findMany({
+      where: { semesterRecord: { studentId } },
+      include: { semesterRecord: { include: { academicYear: { select: { year: true } } } } },
+      orderBy: { semesterRecord: { academicYear: { year: "desc" } } },
+      take: 5,
+    });
+
+    if (records.length === 0) {
+      return { success: true, result: `${student.name} belum memiliki data kesehatan.` };
+    }
+
+    const list = records.map((r) =>
+      `${r.semesterRecord.academicYear.year}: TB ${r.height}cm, BB ${r.weight}kg, Penglihatan: ${r.visionCondition}, Pendengaran: ${r.hearingCondition}, Gigi: ${r.teethCondition}`
+    ).join("\n");
+
+    logger.info({ studentId, count: records.length }, "Chatbot tool: kesehatan_siswa completed");
+    return { success: true, result: `Data kesehatan ${student.name}:\n${list}` };
+  },
+
+  // ── TREN NILAI ──────────────────────────────────────────────────────
+  tren_nilai: async (args) => {
+    const studentId = args.studentId;
+    logger.debug({ studentId }, "Chatbot tool: tren_nilai called");
+
+    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { name: true } });
+    if (!student) return { success: true, result: "Siswa tidak ditemukan." };
+
+    const records = await prisma.semesterRecord.findMany({
+      where: { studentId },
+      include: { academicYear: { select: { year: true } }, subjectScores: true },
+      orderBy: [{ academicYear: { year: "asc" } }, { semester: "asc" }],
+    });
+
+    if (records.length < 2) {
+      return { success: true, result: `${student.name} perlu minimal 2 semester untuk melihat tren.` };
+    }
+
+    const averages = records.map((r) => {
+      const scores = r.subjectScores;
+      const avg = scores.length > 0 ? Math.round(scores.reduce((s, sc) => s + sc.knowledgeScore, 0) / scores.length) : 0;
+      return `  ${r.academicYear.year} S${r.semester}: Rata-rata ${avg}`;
+    });
+
+    // Hitung tren sederhana: bandingkan semester pertama dan terakhir
+    const firstAvg = records[0].subjectScores.length > 0
+      ? Math.round(records[0].subjectScores.reduce((s, sc) => s + sc.knowledgeScore, 0) / records[0].subjectScores.length)
+      : 0;
+    const lastAvg = records[records.length - 1].subjectScores.length > 0
+      ? Math.round(records[records.length - 1].subjectScores.reduce((s, sc) => s + sc.knowledgeScore, 0) / records[records.length - 1].subjectScores.length)
+      : 0;
+    const delta = lastAvg - firstAvg;
+    const trend = delta > 2 ? "NAIK" : delta < -2 ? "TURUN" : "STABIL";
+
+    logger.info({ studentId, trend, delta }, "Chatbot tool: tren_nilai completed");
+    return {
+      success: true,
+      result: `Tren nilai ${student.name}: ${trend} (perubahan: ${delta > 0 ? "+" : ""}${delta} poin)\n\n${averages.join("\n")}`,
+    };
+  },
+
+  // ── RISIKO KELAS ────────────────────────────────────────────────────
+  risiko_kelas: async (args) => {
+    const classId = args.classId;
+    logger.debug({ classId }, "Chatbot tool: risiko_kelas called");
+
+    const cls = await prisma.class.findUnique({ where: { id: classId }, select: { name: true } });
+    if (!cls) return { success: true, result: "Kelas tidak ditemukan." };
+
+    const predictions = await prisma.predictedOutcome.findMany({
+      where: {
+        student: { classId },
+        modelType: "RISK_CLASSIFICATION",
+        isActive: true,
+      },
+      include: { student: { select: { name: true } } },
+    });
+
+    if (predictions.length === 0) {
+      return { success: true, result: `Belum ada data risiko untuk kelas ${cls.name}.` };
+    }
+
+    const aman = predictions.filter((p) => p.label === "AMAN").length;
+    const waspada = predictions.filter((p) => p.label === "WASPADA").length;
+    const kritis = predictions.filter((p) => p.label === "KRITIS").length;
+
+    const list = predictions.map((p) =>
+      `  ${p.student.name}: ${p.label} (skor ${p.score})`
+    ).join("\n");
+
+    logger.info({ classId, aman, waspada, kritis }, "Chatbot tool: risiko_kelas completed");
+    return {
+      success: true,
+      result: `Distribusi Risiko Kelas ${cls.name}:\n🟢 AMAN: ${aman}\n🟡 WASPADA: ${waspada}\n🔴 KRITIS: ${kritis}\n\nDetail:\n${list}`,
     };
   },
 };
