@@ -69,12 +69,17 @@ jobs:
           ssh-keyscan -H -t ed25519,rsa "$VPS_HOST" >> ~/.ssh/known_hosts
           SSH_OPTS=(-o StrictHostKeyChecking=yes -o LogLevel=error)
 
-          # Git pull — discard local changes, pull latest
+          # Git pull — clone if not exists, otherwise discard local changes & pull latest
           ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" \
-            "cd $VPS_TARGET_DIR && \
-             git remote set-url origin https://x-access-token:${GH_PAT}@github.com/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm.git && \
-             git reset --hard HEAD && \
-             git pull origin main"
+            "if [ -d $VPS_TARGET_DIR/.git ]; then \
+               cd $VPS_TARGET_DIR && \
+               git remote set-url origin https://x-access-token:${GH_PAT}@github.com/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm.git && \
+               git reset --hard HEAD && \
+               git pull origin main; \
+             else \
+               mkdir -p $VPS_TARGET_DIR && \
+               git clone https://x-access-token:${GH_PAT}@github.com/lsar-lidm-2026/longitudinal-student-academic-record-system-lidm.git $VPS_TARGET_DIR; \
+             fi"
 
           # Write .env
           printf '%s\n' "$PRODUCTION_ENV" | ssh "${SSH_OPTS[@]}" "$VPS_USER@$VPS_HOST" "cat > $VPS_TARGET_DIR/.env"
