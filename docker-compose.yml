@@ -11,6 +11,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - HOSTNAME=0.0.0.0
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -36,6 +37,10 @@ services:
       - app-shared-net
     labels:
       - "traefik.enable=true"
+      - "traefik.http.routers.lidm-frontend.rule=Host(`lidm.asepharyana.my.id`)"
+      - "traefik.http.routers.lidm-frontend.entrypoints=websecure"
+      - "traefik.http.routers.lidm-frontend.tls=true"
+      - "traefik.http.routers.lidm-frontend.middlewares=common-chain@file"
 
   backend:
     build:
@@ -86,6 +91,10 @@ services:
       - app-shared-net
     labels:
       - "traefik.enable=true"
+      - "traefik.http.routers.lidm-backend.rule=Host(`lidm-api.asepharyana.my.id`)"
+      - "traefik.http.routers.lidm-backend.entrypoints=websecure"
+      - "traefik.http.routers.lidm-backend.tls=true"
+      - "traefik.http.routers.lidm-backend.middlewares=common-chain@file"
 
 networks:
   app-shared-net:
